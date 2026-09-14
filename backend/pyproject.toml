@@ -4,8 +4,12 @@ version = "0.1.0"
 description = "Local-first Gmail subscription review and unsubscribe agent"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+  "alembic>=1.14,<2",
+  "cryptography>=44,<47",
   "fastapi>=0.115,<1",
+  "keyring>=25.6,<27",
   "pydantic-settings>=2.7,<3",
+  "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.34,<1",
 ]
 

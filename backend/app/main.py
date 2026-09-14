@@ -6,13 +6,16 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.health import router as health_router
+from app.api.security import SessionRegistry, create_security_router
+from app.config import Settings
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPOSITORY_ROOT / "frontend" / "dist"
 RESERVED_PREFIXES = ("api", "auth", "events")
 
 
-def create_app() -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or Settings()
     application = FastAPI(
         title="Gmail Unsubscribe Agent API",
         version="0.1.0",
@@ -21,9 +24,12 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+        allowed_hosts=list(settings.allowed_hosts),
     )
     application.include_router(health_router)
+    application.include_router(
+        create_security_router(SessionRegistry(), frozenset(settings.allowed_origins))
+    )
 
     assets = FRONTEND_DIST / "assets"
     if assets.is_dir():
@@ -41,4 +47,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
