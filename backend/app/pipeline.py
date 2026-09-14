@@ -1,8 +1,10 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from app.candidates.grouper import CandidateGrouper, EvaluatedMessage, SubscriptionCandidate
 from app.classification.models import ClassifierModel
 from app.classification.service import ClassificationService
+from app.domain.models import ClassificationCategory
 from app.email_processing.normalizer import EmailNormalizer
 from app.email_processing.unsubscribe import UnsubscribeDiscovery
 from app.gmail.protocols import GmailMessage
@@ -12,12 +14,48 @@ class InMemoryCandidateCatalog:
     def __init__(self) -> None:
         self._messages: dict[str, EvaluatedMessage] = {}
         self._grouper = CandidateGrouper()
+        self._corrections: dict[str, tuple[int, ClassificationCategory]] = {}
 
     def add(self, message: EvaluatedMessage) -> None:
         self._messages[message.gmail_id] = message
 
     def candidates(self) -> tuple[SubscriptionCandidate, ...]:
-        return self._grouper.group(list(self._messages.values()))
+        candidates = self._grouper.group(list(self._messages.values()))
+        corrected: list[SubscriptionCandidate] = []
+        for candidate in candidates:
+            correction = self._corrections.get(candidate.id)
+            if correction is None:
+                corrected.append(candidate)
+                continue
+            revision, category = correction
+            corrected.append(replace(candidate, revision=revision, category=category))
+        return tuple(corrected)
+
+    def get(self, candidate_id: str) -> SubscriptionCandidate | None:
+        return next(
+            (candidate for candidate in self.candidates() if candidate.id == candidate_id),
+            None,
+        )
+
+    def correct(
+        self,
+        candidate_id: str,
+        expected_revision: int,
+        category: ClassificationCategory,
+    ) -> SubscriptionCandidate:
+        candidate = self.get(candidate_id)
+        if candidate is None:
+            raise KeyError(candidate_id)
+        if candidate.revision != expected_revision:
+            raise StaleCandidate(candidate_id)
+        self._corrections[candidate_id] = (candidate.revision + 1, category)
+        corrected = self.get(candidate_id)
+        assert corrected is not None
+        return corrected
+
+
+class StaleCandidate(RuntimeError):
+    pass
 
 
 class ProcessingPipeline:

@@ -123,10 +123,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidates */
+        get: operations["list_candidates_api_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct Candidate */
+        patch: operations["correct_candidate_api_candidates__candidate_id__patch"];
+        trace?: never;
+    };
+    "/api/action-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Plan */
+        post: operations["create_plan_api_action_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/action-plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_api_action_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActionPlanResponse */
+        ActionPlanResponse: {
+            /** Id */
+            id: string;
+            /** Digest */
+            digest: string;
+            /** Confirmed */
+            confirmed: boolean;
+            /** Items */
+            items: components["schemas"]["PlanItemResponse"][];
+        };
+        /** CandidateCorrectionRequest */
+        CandidateCorrectionRequest: {
+            category: components["schemas"]["ClassificationCategory"];
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** CandidateListResponse */
+        CandidateListResponse: {
+            /** Items */
+            items: components["schemas"]["CandidateResponse"][];
+        };
+        /** CandidateResponse */
+        CandidateResponse: {
+            /** Id */
+            id: string;
+            /** Revision */
+            revision: number;
+            /** Sender */
+            sender: string;
+            /** Representative Subject */
+            representative_subject: string;
+            /** Message Count */
+            message_count: number;
+            category: components["schemas"]["ClassificationCategory"];
+            /** Confidence */
+            confidence: number;
+            /** Reason */
+            reason: string;
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Method */
+            method: string;
+            /** Target Display */
+            target_display: string;
+            /** First Seen */
+            first_seen: string;
+            /** Last Seen */
+            last_seen: string;
+        };
+        /**
+         * ClassificationCategory
+         * @enum {string}
+         */
+        ClassificationCategory: "marketing" | "non_marketing" | "unclear";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -164,6 +287,26 @@ export interface components {
             /** Authorization Url */
             authorization_url: string;
         };
+        /** PlanCreateRequest */
+        PlanCreateRequest: {
+            /** Selections */
+            selections: components["schemas"]["SelectionRequest"][];
+        };
+        /** PlanItemResponse */
+        PlanItemResponse: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Revision */
+            revision: number;
+            /** Sender */
+            sender: string;
+            /** Subject */
+            subject: string;
+            /** Method */
+            method: string;
+            /** Target Display */
+            target_display: string;
+        };
         /** ScanCreateRequest */
         ScanCreateRequest: {
             /** Scan Id */
@@ -187,6 +330,13 @@ export interface components {
             processed_count: number;
             /** Completed */
             completed: boolean;
+        };
+        /** SelectionRequest */
+        SelectionRequest: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Revision */
+            revision: number;
         };
         /** SessionResponse */
         SessionResponse: {
@@ -416,6 +566,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_candidates_api_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateListResponse"];
+                };
+            };
+        };
+    };
+    correct_candidate_api_candidates__candidate_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                unsubscribe_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_plan_api_action_plans_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                unsubscribe_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_api_action_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanResponse"];
                 };
             };
             /** @description Validation Error */

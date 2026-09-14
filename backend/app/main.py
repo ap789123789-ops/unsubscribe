@@ -5,7 +5,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.actions.planner import ActionPlanService
+from app.api.action_plans import create_action_plan_router
 from app.api.auth import create_auth_router
+from app.api.candidates import create_candidate_router
 from app.api.health import router as health_router
 from app.api.scans import create_scan_router
 from app.api.security import SessionRegistry, create_local_security
@@ -33,9 +36,10 @@ def create_app(
     *,
     oauth_coordinator: OAuthCoordinator | None = None,
     scan_service: ScanService | None = None,
+    candidate_catalog: InMemoryCandidateCatalog | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
-    candidate_catalog = InMemoryCandidateCatalog()
+    candidate_catalog = candidate_catalog or InMemoryCandidateCatalog()
     credential_store: KeyringCredentialStore | None = None
     if oauth_coordinator is None and settings.google_client_secrets_file is not None:
         try:
@@ -79,6 +83,15 @@ def create_app(
         create_auth_router(oauth_coordinator, local_security.require_mutation)
     )
     application.include_router(create_scan_router(scan_service, local_security.require_mutation))
+    application.include_router(
+        create_candidate_router(candidate_catalog, local_security.require_mutation)
+    )
+    application.include_router(
+        create_action_plan_router(
+            ActionPlanService(candidate_catalog),
+            local_security.require_mutation,
+        )
+    )
 
     assets = FRONTEND_DIST / "assets"
     if assets.is_dir():

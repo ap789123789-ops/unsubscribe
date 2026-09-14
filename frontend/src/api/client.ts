@@ -1,6 +1,7 @@
 import createClient from 'openapi-fetch'
 
-import type { paths } from './generated/schema'
+import type { components, paths } from './generated/schema'
+import type { Category, ReviewCandidate } from '../features/review/ReviewPage'
 
 export const api = createClient<paths>({ baseUrl: window.location.origin })
 
@@ -10,3 +11,96 @@ export async function getHealth() {
   return data
 }
 
+let csrfToken: string | null = null
+
+async function mutationHeaders() {
+  if (!csrfToken) {
+    const { data, error } = await api.GET('/api/session')
+    if (error || !data) throw new Error('Local session could not be established')
+    csrfToken = data.csrf_token
+  }
+  return { 'X-CSRF-Token': csrfToken }
+}
+
+export async function beginGoogleOAuth() {
+  const { data, error } = await api.POST('/auth/google/start', {
+    headers: await mutationHeaders(),
+  })
+  if (error || !data) throw new Error('Google OAuth could not start')
+  return data
+}
+
+export async function disconnectGoogle() {
+  const { error } = await api.POST('/api/accounts/disconnect', {
+    headers: await mutationHeaders(),
+  })
+  if (error) throw new Error('Gmail could not be disconnected')
+}
+
+export async function startScan(body: components['schemas']['ScanCreateRequest']) {
+  const { data, error } = await api.POST('/api/scans', {
+    headers: await mutationHeaders(),
+    body,
+  })
+  if (error || !data) throw new Error('Scan could not start')
+  return data
+}
+
+function shortDateRange(first: string, last: string) {
+  const formatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+  return `${formatter.format(new Date(first))}–${formatter.format(new Date(last))}`
+}
+
+export async function listCandidates(): Promise<ReviewCandidate[]> {
+  const { data, error } = await api.GET('/api/candidates')
+  if (error || !data) throw new Error('Candidates could not be loaded')
+  return data.items.map((candidate) => ({
+    id: candidate.id,
+    revision: candidate.revision,
+    sender: candidate.sender,
+    representativeSubject: candidate.representative_subject,
+    messageCount: candidate.message_count,
+    category: candidate.category,
+    confidence: candidate.confidence,
+    reason: candidate.reason,
+    evidenceQuote: candidate.evidence_quote,
+    method: candidate.method as ReviewCandidate['method'],
+    targetDisplay: candidate.target_display,
+    dateRange: shortDateRange(candidate.first_seen, candidate.last_seen),
+  }))
+}
+
+export async function correctCandidate(
+  candidateId: string,
+  expectedRevision: number,
+  category: Category,
+) {
+  const { data, error } = await api.PATCH('/api/candidates/{candidate_id}', {
+    params: { path: { candidate_id: candidateId } },
+    headers: await mutationHeaders(),
+    body: { category, expected_revision: expectedRevision },
+  })
+  if (error || !data) throw new Error('Candidate correction was rejected')
+  return data
+}
+
+export async function createActionPlan(
+  selections: components['schemas']['SelectionRequest'][],
+) {
+  const { data, error } = await api.POST('/api/action-plans', {
+    headers: await mutationHeaders(),
+    body: { selections },
+  })
+  if (error || !data) throw new Error('Action plan could not be created')
+  return data
+}
+
+export type ActionPlanView = components['schemas']['ActionPlanResponse']
+
+export async function getActionPlan(planId: string): Promise<ActionPlanView> {
+  const { data, error } = await api.GET('/api/action-plans/{plan_id}', {
+    params: { path: { plan_id: planId } },
+  })
+  if (error || !data) throw new Error('Action plan could not be loaded')
+  return data
+}

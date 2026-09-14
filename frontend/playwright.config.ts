@@ -11,10 +11,10 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npm run build && cd ../backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8000',
+    command: 'npm run build && cd ../backend && uv run uvicorn tests.e2e_app:app --host 127.0.0.1 --port 8000',
+    env: { UV_CACHE_DIR: '/tmp/unsubscribe-uv-cache' },
     url: 'http://127.0.0.1:8000/api/health',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 })
-

@@ -360,10 +360,377 @@
           }
         }
       }
+    },
+    "/api/candidates": {
+      "get": {
+        "tags": [
+          "candidates"
+        ],
+        "summary": "List Candidates",
+        "operationId": "list_candidates_api_candidates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/candidates/{candidate_id}": {
+      "patch": {
+        "tags": [
+          "candidates"
+        ],
+        "summary": "Correct Candidate",
+        "operationId": "correct_candidate_api_candidates__candidate_id__patch",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "unsubscribe_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unsubscribe Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateCorrectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/action-plans": {
+      "post": {
+        "tags": [
+          "action-plans"
+        ],
+        "summary": "Create Plan",
+        "operationId": "create_plan_api_action_plans_post",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "unsubscribe_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unsubscribe Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/action-plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "action-plans"
+        ],
+        "summary": "Get Plan",
+        "operationId": "get_plan_api_action_plans__plan_id__get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActionPlanResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "digest": {
+            "type": "string",
+            "title": "Digest"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "digest",
+          "confirmed",
+          "items"
+        ],
+        "title": "ActionPlanResponse"
+      },
+      "CandidateCorrectionRequest": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ClassificationCategory"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "title": "Expected Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "expected_revision"
+        ],
+        "title": "CandidateCorrectionRequest"
+      },
+      "CandidateListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CandidateListResponse"
+      },
+      "CandidateResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "representative_subject": {
+            "type": "string",
+            "title": "Representative Subject"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ClassificationCategory"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "target_display": {
+            "type": "string",
+            "title": "Target Display"
+          },
+          "first_seen": {
+            "type": "string",
+            "title": "First Seen"
+          },
+          "last_seen": {
+            "type": "string",
+            "title": "Last Seen"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "revision",
+          "sender",
+          "representative_subject",
+          "message_count",
+          "category",
+          "confidence",
+          "reason",
+          "evidence_quote",
+          "method",
+          "target_display",
+          "first_seen",
+          "last_seen"
+        ],
+        "title": "CandidateResponse"
+      },
+      "ClassificationCategory": {
+        "type": "string",
+        "enum": [
+          "marketing",
+          "non_marketing",
+          "unclear"
+        ],
+        "title": "ClassificationCategory"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -434,6 +801,62 @@
         ],
         "title": "OAuthStartResponse"
       },
+      "PlanCreateRequest": {
+        "properties": {
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionRequest"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Selections"
+          }
+        },
+        "type": "object",
+        "required": [
+          "selections"
+        ],
+        "title": "PlanCreateRequest"
+      },
+      "PlanItemResponse": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "target_display": {
+            "type": "string",
+            "title": "Target Display"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "revision",
+          "sender",
+          "subject",
+          "method",
+          "target_display"
+        ],
+        "title": "PlanItemResponse"
+      },
       "ScanCreateRequest": {
         "properties": {
           "scan_id": {
@@ -485,6 +908,25 @@
           "completed"
         ],
         "title": "ScanResponse"
+      },
+      "SelectionRequest": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "revision"
+        ],
+        "title": "SelectionRequest"
       },
       "SessionResponse": {
         "properties": {
