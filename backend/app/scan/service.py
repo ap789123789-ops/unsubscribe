@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -77,7 +78,7 @@ class ScanService:
         self,
         gateway: GmailGateway,
         checkpoints: ScanCheckpointStore,
-        message_sink: Callable[[GmailMessage], None],
+        message_sink: Callable[[GmailMessage], object],
         *,
         retry_delays: tuple[float, ...] = (0, 0.05, 0.2),
     ) -> None:
@@ -102,7 +103,9 @@ class ScanService:
                 if self._checkpoints.has_seen(request.scan_id, reference.id):
                     continue
                 message = await self._read_with_retry(reference.id)
-                self._message_sink(message)
+                sink_result = self._message_sink(message)
+                if inspect.isawaitable(sink_result):
+                    await sink_result
                 self._checkpoints.mark_seen(request.scan_id, reference.id)
                 if self._checkpoints.count(request.scan_id) >= request.max_messages:
                     break
