@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, ge=1024, le=65535)
     database_url: str = "sqlite:///./unsubscribe.db"
     frontend_dist: Path | None = None
+    google_client_secrets_file: Path | None = None
+    oauth_redirect_uri: str = "http://127.0.0.1:8000/auth/google/callback"
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost", "testserver")
     allowed_origins: tuple[str, ...] = (
         "http://127.0.0.1:8000",
@@ -23,4 +25,3 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://localhost:5173",
     )
-

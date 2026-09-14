@@ -50,6 +50,16 @@ class ScanJobORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ScanCheckpointORM(Base):
+    __tablename__ = "scan_checkpoints"
+
+    scan_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    next_page_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    seen_message_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    completed: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class MessageORM(Base):
     __tablename__ = "messages"
 
@@ -136,4 +146,3 @@ class ActionEventORM(Base):
     evidence_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     safe_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-

@@ -1,5 +1,6 @@
 import hmac
 import secrets
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
@@ -33,10 +34,16 @@ class VerificationResponse(BaseModel):
     verified: bool = True
 
 
-def create_security_router(
+@dataclass(frozen=True)
+class LocalSecurity:
+    router: APIRouter
+    require_mutation: Callable[..., Awaitable[None]]
+
+
+def create_local_security(
     registry: SessionRegistry,
     allowed_origins: frozenset[str],
-) -> APIRouter:
+) -> LocalSecurity:
     router = APIRouter(tags=["security"])
 
     @router.get("/api/session", response_model=SessionResponse)
@@ -69,5 +76,4 @@ def create_security_router(
     async def verify_session() -> VerificationResponse:
         return VerificationResponse()
 
-    return router
-
+    return LocalSecurity(router=router, require_mutation=require_local_mutation)
