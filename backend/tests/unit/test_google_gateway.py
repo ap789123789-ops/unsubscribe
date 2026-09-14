@@ -1,6 +1,14 @@
+import base64
 import json
+from email import message_from_bytes
 
-from app.gmail.google_gateway import GoogleGmailGateway, GoogleOAuthProvider
+from app.actions.planner import ExactMailDraft
+from app.gmail.google_gateway import (
+    GoogleGmailGateway,
+    GoogleOAuthProvider,
+    StoredCredentialGmailGateway,
+)
+from app.gmail.protocols import OAuthIntent
 
 
 class Request:
@@ -35,6 +43,10 @@ class MessagesResource:
                 "payload": {"headers": []},
             }
         )
+
+    def send(self, **kwargs: object) -> Request:
+        self.calls.append(("send", kwargs))
+        return Request({"id": "sent-1"})
 
 
 class UsersResource:
@@ -117,3 +129,68 @@ def test_oauth_provider_builds_loopback_pkce_url(tmp_path) -> None:
     assert "code_challenge=challenge-1" in url
     assert "code_challenge_method=S256" in url
     assert "gmail.readonly" in url
+
+    send_url = provider.authorization_url(
+        state="state-2",
+        code_challenge="challenge-2",
+        intent=OAuthIntent.SEND,
+    )
+    assert "gmail.readonly" in send_url
+    assert "gmail.send" in send_url
+
+
+async def test_google_gateway_sends_exact_message_and_reconciles_sent_mail() -> None:
+    service = GmailService()
+    credentials_json = json.dumps(
+        {
+            "token": "access",
+            "refresh_token": "refresh",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": "client",
+            "client_secret": "secret",
+            "scopes": [
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/gmail.send",
+            ],
+        }
+    )
+    gateway = GoogleGmailGateway(credentials_json, service_factory=lambda _: service)
+    draft = ExactMailDraft("leave@example.com", "Remove me", "Please unsubscribe me")
+    message_id = "<unsubscribe-opaque@local.invalid>"
+
+    sent_id = await gateway.send_mailto_unsubscribe(draft, message_id)
+    found_id = await gateway.find_sent_by_message_id(message_id)
+
+    assert await gateway.has_send_scope() is True
+    assert sent_id == "sent-1"
+    assert found_id == "m1"
+    send_call = service.messages_resource.calls[0]
+    raw = send_call[1]["body"]["raw"]  # type: ignore[index]
+    decoded = message_from_bytes(base64.urlsafe_b64decode(raw))
+    assert decoded["To"] == "leave@example.com"
+    assert decoded["Subject"] == "Remove me"
+    assert decoded["Message-ID"] == message_id
+    assert decoded.get_payload().strip() == "Please unsubscribe me"
+    assert service.messages_resource.calls[1] == (
+        "list",
+        {
+            "userId": "me",
+            "q": f"in:sent rfc822msgid:{message_id}",
+            "maxResults": 1,
+            "includeSpamTrash": False,
+        },
+    )
+
+
+async def test_stored_gateway_reports_no_send_scope_before_connection() -> None:
+    class EmptyStore:
+        def get(self, key: str) -> str | None:
+            return None
+
+        def set(self, key: str, value: str) -> None:
+            pass
+
+        def delete(self, key: str) -> None:
+            pass
+
+    assert await StoredCredentialGmailGateway(EmptyStore()).has_send_scope() is False

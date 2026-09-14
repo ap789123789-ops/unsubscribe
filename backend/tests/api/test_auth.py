@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.gmail.oauth import OAuthCoordinator
-from app.gmail.protocols import OAuthToken
+from app.gmail.protocols import OAuthIntent, OAuthToken
 from app.main import create_app
 
 
@@ -20,10 +20,14 @@ class MemoryCredentials:
 
 
 class FakeProvider:
-    def authorization_url(self, *, state: str, code_challenge: str) -> str:
+    def authorization_url(
+        self, *, state: str, code_challenge: str, intent: OAuthIntent
+    ) -> str:
         return f"https://accounts.example/auth?state={state}&challenge={code_challenge}"
 
-    def exchange_code(self, *, code: str, code_verifier: str) -> OAuthToken:
+    def exchange_code(
+        self, *, code: str, code_verifier: str, intent: OAuthIntent
+    ) -> OAuthToken:
         return OAuthToken("stored-token", ("gmail.readonly",))
 
 
@@ -43,9 +47,15 @@ def test_oauth_api_requires_local_confirmation_and_supports_disconnect() -> None
     callback = client.get(
         "/auth/google/callback",
         params={"code": "code", "state": state},
+        follow_redirects=False,
     )
 
-    assert callback.json() == {"connected": True, "scopes": ["gmail.readonly"]}
+    assert callback.status_code == 303
+    assert callback.headers["location"] == "/review?gmail=connected"
+    assert client.get("/api/account").json() == {
+        "connected": True,
+        "scopes": ["gmail.readonly"],
+    }
     assert credentials.get("google-oauth") == "stored-token"
     assert client.post("/api/accounts/disconnect", headers=mutation_headers).status_code == 204
     assert credentials.get("google-oauth") is None

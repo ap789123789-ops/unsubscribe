@@ -19,6 +19,14 @@ def test_plan_is_immutable_redacted_and_rejects_stale_candidate() -> None:
     assert plan.json()["items"][0]["target_display"] == "example.com"
     assert "private" not in str(plan.json())
 
+    unavailable = client.post(
+        f"/api/action-plans/{plan.json()['id']}/confirm",
+        headers=headers,
+        json={"digest": plan.json()["digest"]},
+    )
+    assert unavailable.status_code == 503
+    assert unavailable.json()["detail"]["code"] == "execution_unavailable"
+
     catalog.correct(candidate["id"], 1, ClassificationCategory.UNCLEAR)
     stale = client.post(
         "/api/action-plans",

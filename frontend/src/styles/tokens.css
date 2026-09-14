@@ -83,6 +83,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .plan-group { border-top: 5px solid var(--safe-blue); background: white; padding: 20px 24px; }
 .plan-group ul { list-style: none; padding: 0; }
 .plan-group li { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 20px; padding: 14px 0; border-top: 1px solid var(--rule); }
+.plan-group li > div:first-child { display: grid; gap: 5px; align-content: start; }
+.mail-preview { margin: 0; display: grid; gap: 8px; }
+.mail-preview div { display: grid; grid-template-columns: 68px 1fr; gap: 12px; }
+.mail-preview dt { color: #53606b; font-size: .85rem; font-weight: 600; }
+.mail-preview dd { margin: 0; overflow-wrap: anywhere; }
+.mail-preview pre { margin: 0; white-space: pre-wrap; font: inherit; }
 
 @media (max-width: 800px) {
   .app-header { align-items: flex-start; }

@@ -1,6 +1,9 @@
 import asyncio
+import base64
 import json
 from collections.abc import Callable
+from email.message import EmailMessage
+from email.policy import SMTP
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +17,12 @@ from app.gmail.protocols import (
     GmailMessage,
     GmailMessageRef,
     GmailPage,
+    OAuthIntent,
     OAuthToken,
 )
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 
 
 class GoogleOAuthProvider:
@@ -25,17 +30,31 @@ class GoogleOAuthProvider:
         self._client_secrets_file = client_secrets_file
         self._redirect_uri = redirect_uri
 
-    def _flow(self, *, code_verifier: str | None = None) -> Flow:
+    def _flow(
+        self,
+        *,
+        intent: OAuthIntent,
+        code_verifier: str | None = None,
+    ) -> Flow:
+        scopes = [GMAIL_READONLY_SCOPE]
+        if intent is OAuthIntent.SEND:
+            scopes.append(GMAIL_SEND_SCOPE)
         return Flow.from_client_secrets_file(
             str(self._client_secrets_file),
-            scopes=[GMAIL_READONLY_SCOPE],
+            scopes=scopes,
             redirect_uri=self._redirect_uri,
             code_verifier=code_verifier,
             autogenerate_code_verifier=False,
         )
 
-    def authorization_url(self, *, state: str, code_challenge: str) -> str:
-        flow = self._flow()
+    def authorization_url(
+        self,
+        *,
+        state: str,
+        code_challenge: str,
+        intent: OAuthIntent = OAuthIntent.READ,
+    ) -> str:
+        flow = self._flow(intent=intent)
         url, _ = flow.authorization_url(
             state=state,
             access_type="offline",
@@ -45,8 +64,14 @@ class GoogleOAuthProvider:
         )
         return url
 
-    def exchange_code(self, *, code: str, code_verifier: str) -> OAuthToken:
-        flow = self._flow(code_verifier=code_verifier)
+    def exchange_code(
+        self,
+        *,
+        code: str,
+        code_verifier: str,
+        intent: OAuthIntent = OAuthIntent.READ,
+    ) -> OAuthToken:
+        flow = self._flow(intent=intent, code_verifier=code_verifier)
         flow.fetch_token(code=code)
         credentials = flow.credentials
         return OAuthToken(
@@ -133,18 +158,62 @@ class GoogleGmailGateway:
         )
         return str(response["emailAddress"])
 
+    async def has_send_scope(self) -> bool:
+        return GMAIL_SEND_SCOPE in set(self._credentials.scopes or ())
+
+    async def send_mailto_unsubscribe(self, draft: Any, message_id: str) -> str:
+        message = EmailMessage()
+        message["To"] = draft.recipient
+        message["Subject"] = draft.subject
+        message["Message-ID"] = message_id
+        message.set_content(draft.body)
+        raw = base64.urlsafe_b64encode(message.as_bytes(policy=SMTP)).decode("ascii")
+
+        def request() -> dict[str, Any]:
+            return (
+                self._client()
+                .users()
+                .messages()
+                .send(userId="me", body={"raw": raw})
+                .execute()
+            )
+
+        response = await asyncio.to_thread(request)
+        return str(response["id"])
+
+    async def find_sent_by_message_id(self, message_id: str) -> str | None:
+        def request() -> dict[str, Any]:
+            return (
+                self._client()
+                .users()
+                .messages()
+                .list(
+                    userId="me",
+                    q=f"in:sent rfc822msgid:{message_id}",
+                    maxResults=1,
+                    includeSpamTrash=False,
+                )
+                .execute()
+            )
+
+        response = await asyncio.to_thread(request)
+        messages = response.get("messages", [])
+        return str(messages[0]["id"]) if messages else None
+
 
 class StoredCredentialGmailGateway:
     def __init__(self, credential_store: CredentialStore) -> None:
         self._credential_store = credential_store
         self._gateway: GoogleGmailGateway | None = None
+        self._serialized_credentials: str | None = None
 
     def _connected(self) -> GoogleGmailGateway:
-        if self._gateway is None:
-            serialized = self._credential_store.get(OAuthCoordinator.credential_key)
-            if serialized is None:
-                raise RuntimeError("Gmail is not connected")
+        serialized = self._credential_store.get(OAuthCoordinator.credential_key)
+        if serialized is None:
+            raise RuntimeError("Gmail is not connected")
+        if self._gateway is None or serialized != self._serialized_credentials:
             self._gateway = GoogleGmailGateway(serialized)
+            self._serialized_credentials = serialized
         return self._gateway
 
     async def list_messages(
@@ -165,3 +234,14 @@ class StoredCredentialGmailGateway:
 
     async def profile_email(self) -> str:
         return await self._connected().profile_email()
+
+    async def has_send_scope(self) -> bool:
+        if self._credential_store.get(OAuthCoordinator.credential_key) is None:
+            return False
+        return await self._connected().has_send_scope()
+
+    async def send_mailto_unsubscribe(self, draft: Any, message_id: str) -> str:
+        return await self._connected().send_mailto_unsubscribe(draft, message_id)
+
+    async def find_sent_by_message_id(self, message_id: str) -> str | None:
+        return await self._connected().find_sent_by_message_id(message_id)

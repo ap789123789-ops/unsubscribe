@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Account Status */
+        get: operations["account_status_api_account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/disconnect": {
         parameters: {
             query?: never;
@@ -191,10 +208,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/action-plans/{plan_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Plan */
+        post: operations["confirm_plan_api_action_plans__plan_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountResponse */
+        AccountResponse: {
+            /** Connected */
+            connected: boolean;
+            /** Scopes */
+            scopes: string[];
+        };
+        /** ActionListResponse */
+        ActionListResponse: {
+            /** Items */
+            items: components["schemas"]["ActionResponse"][];
+        };
         /** ActionPlanResponse */
         ActionPlanResponse: {
             /** Id */
@@ -205,6 +251,17 @@ export interface components {
             confirmed: boolean;
             /** Items */
             items: components["schemas"]["PlanItemResponse"][];
+        };
+        /** ActionResponse */
+        ActionResponse: {
+            /** Id */
+            id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Method */
+            method: string;
+            /** State */
+            state: string;
         };
         /** CandidateCorrectionRequest */
         CandidateCorrectionRequest: {
@@ -270,22 +327,31 @@ export interface components {
              */
             api_version: "v1";
         };
-        /** OAuthCompleteResponse */
-        OAuthCompleteResponse: {
-            /**
-             * Connected
-             * @default true
-             */
-            connected: boolean;
-            /** Scopes */
-            scopes: string[];
+        /** MailPreviewResponse */
+        MailPreviewResponse: {
+            /** Recipient */
+            recipient: string;
+            /** Subject */
+            subject: string;
+            /** Body */
+            body: string;
         };
+        /**
+         * OAuthIntent
+         * @enum {string}
+         */
+        OAuthIntent: "read" | "send";
         /** OAuthStartResponse */
         OAuthStartResponse: {
             /** State */
             state: string;
             /** Authorization Url */
             authorization_url: string;
+        };
+        /** PlanConfirmRequest */
+        PlanConfirmRequest: {
+            /** Digest */
+            digest: string;
         };
         /** PlanCreateRequest */
         PlanCreateRequest: {
@@ -306,6 +372,7 @@ export interface components {
             method: string;
             /** Target Display */
             target_display: string;
+            mail_preview?: components["schemas"]["MailPreviewResponse"] | null;
         };
         /** ScanCreateRequest */
         ScanCreateRequest: {
@@ -448,7 +515,10 @@ export interface operations {
     };
     start_google_oauth_auth_google_start_post: {
         parameters: {
-            query?: never;
+            query?: {
+                intent?: components["schemas"]["OAuthIntent"];
+                return_to?: string;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -492,13 +562,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            307: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["OAuthCompleteResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -507,6 +575,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_status_api_account_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponse"];
                 };
             };
         };
@@ -693,6 +781,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_plan_api_action_plans__plan_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                plan_id: string;
+            };
+            cookie?: {
+                unsubscribe_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionListResponse"];
                 };
             };
             /** @description Validation Error */

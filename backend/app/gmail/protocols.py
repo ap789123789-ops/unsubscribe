@@ -1,6 +1,12 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Protocol
+
+
+class OAuthIntent(StrEnum):
+    READ = "read"
+    SEND = "send"
 
 
 @dataclass(frozen=True)
@@ -39,9 +45,13 @@ class CredentialStore(Protocol):
 
 
 class OAuthProvider(Protocol):
-    def authorization_url(self, *, state: str, code_challenge: str) -> str: ...
+    def authorization_url(
+        self, *, state: str, code_challenge: str, intent: OAuthIntent
+    ) -> str: ...
 
-    def exchange_code(self, *, code: str, code_verifier: str) -> OAuthToken: ...
+    def exchange_code(
+        self, *, code: str, code_verifier: str, intent: OAuthIntent
+    ) -> OAuthToken: ...
 
 
 class GmailGateway(Protocol):
@@ -56,4 +66,3 @@ class GmailGateway(Protocol):
     async def get_message(self, message_id: str) -> GmailMessage: ...
 
     async def profile_email(self) -> str: ...
-

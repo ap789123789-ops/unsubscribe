@@ -49,6 +49,29 @@ def test_catalog() -> InMemoryCandidateCatalog:
             evidence_quote="September update",
         )
     )
+    catalog.add(
+        EvaluatedMessage(
+            gmail_id="fixture-mailto-1",
+            sender="Mailing Club <club@example.net>",
+            subject="Club dispatch",
+            sent_at=datetime(2026, 9, 10, 12, tzinfo=UTC),
+            list_id="club.example.net",
+            category=ClassificationCategory.MARKETING,
+            confidence=0.88,
+            methods=(
+                DiscoveredMethod(
+                    method=UnsubscribeMethod.MAILTO,
+                    target=(
+                        "mailto:leave@example.net?subject=Remove%20me"
+                        "&body=Please%20unsubscribe%20this%20address"
+                    ),
+                    source="header",
+                ),
+            ),
+            reason="Recurring mailing list dispatch",
+            evidence_quote="Club dispatch",
+        )
+    )
     return catalog
 
 

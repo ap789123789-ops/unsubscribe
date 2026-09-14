@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.actions.coordinator import ExecutionCoordinator
 from app.actions.planner import ActionPlanService
 from app.api.action_plans import create_action_plan_router
 from app.api.auth import create_auth_router
@@ -14,6 +15,8 @@ from app.api.scans import create_scan_router
 from app.api.security import SessionRegistry, create_local_security
 from app.classification.openai_agent import OpenAIAgentsClassifier
 from app.config import Settings
+from app.executors.mailto import MailtoExecutor
+from app.executors.rfc8058 import HttpxRfcTransport, Rfc8058Executor
 from app.gmail.google_gateway import GoogleOAuthProvider, StoredCredentialGmailGateway
 from app.gmail.oauth import OAuthCoordinator
 from app.persistence.database import (
@@ -21,10 +24,13 @@ from app.persistence.database import (
     create_session_factory,
     initialize_database,
 )
+from app.persistence.repositories import ActionRepository
 from app.pipeline import InMemoryCandidateCatalog, ProcessingPipeline
 from app.scan.checkpoints import SqliteScanCheckpointStore
 from app.scan.service import ScanService
+from app.security.payload_crypto import PayloadCipher, PayloadKeyUnavailable
 from app.security.secrets import InsecureCredentialBackend, KeyringCredentialStore
+from app.security.url_policy import UrlSafetyPolicy
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPOSITORY_ROOT / "frontend" / "dist"
@@ -37,9 +43,17 @@ def create_app(
     oauth_coordinator: OAuthCoordinator | None = None,
     scan_service: ScanService | None = None,
     candidate_catalog: InMemoryCandidateCatalog | None = None,
+    action_plan_service: ActionPlanService | None = None,
+    execution_coordinator: ExecutionCoordinator | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    catalog_was_injected = candidate_catalog is not None
     candidate_catalog = candidate_catalog or InMemoryCandidateCatalog()
+    url_policy = UrlSafetyPolicy()
+    action_plan_service = action_plan_service or ActionPlanService(
+        candidate_catalog,
+        url_policy=None if catalog_was_injected else url_policy,
+    )
     credential_store: KeyringCredentialStore | None = None
     if oauth_coordinator is None and settings.google_client_secrets_file is not None:
         try:
@@ -54,14 +68,42 @@ def create_app(
         except InsecureCredentialBackend:
             oauth_coordinator = None
             credential_store = None
-    if scan_service is None and credential_store is not None:
+    session_factory = None
+    if credential_store is not None:
         engine = create_database_engine(settings.database_url)
         initialize_database(engine)
+        session_factory = create_session_factory(engine)
+    gmail_gateway = (
+        StoredCredentialGmailGateway(credential_store)
+        if credential_store is not None
+        else None
+    )
+    if scan_service is None and gmail_gateway is not None and session_factory is not None:
         scan_service = ScanService(
-            StoredCredentialGmailGateway(credential_store),
-            SqliteScanCheckpointStore(create_session_factory(engine)),
+            gmail_gateway,
+            SqliteScanCheckpointStore(session_factory),
             ProcessingPipeline(OpenAIAgentsClassifier(), candidate_catalog),
         )
+    if (
+        execution_coordinator is None
+        and credential_store is not None
+        and gmail_gateway is not None
+        and session_factory is not None
+    ):
+        try:
+            repository = ActionRepository(session_factory)
+            execution_coordinator = ExecutionCoordinator(
+                plans=action_plan_service,
+                repository=repository,
+                cipher=PayloadCipher.from_credential_store(credential_store),
+                rfc8058=Rfc8058Executor(
+                    policy=url_policy,
+                    transport=HttpxRfcTransport(),
+                ),
+                mailto=MailtoExecutor(gmail=gmail_gateway, journal=repository),
+            )
+        except PayloadKeyUnavailable:
+            execution_coordinator = None
     application = FastAPI(
         title="Gmail Unsubscribe Agent API",
         version="0.1.0",
@@ -88,8 +130,9 @@ def create_app(
     )
     application.include_router(
         create_action_plan_router(
-            ActionPlanService(candidate_catalog),
+            action_plan_service,
             local_security.require_mutation,
+            execution_coordinator,
         )
     )
 

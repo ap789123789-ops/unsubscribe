@@ -22,11 +22,21 @@ async function mutationHeaders() {
   return { 'X-CSRF-Token': csrfToken }
 }
 
-export async function beginGoogleOAuth() {
+export async function beginGoogleOAuth(
+  intent: components['schemas']['OAuthIntent'] = 'read',
+  returnTo = '/review',
+) {
   const { data, error } = await api.POST('/auth/google/start', {
     headers: await mutationHeaders(),
+    params: { query: { intent, return_to: returnTo } },
   })
   if (error || !data) throw new Error('Google OAuth could not start')
+  return data
+}
+
+export async function getAccount() {
+  const { data, error } = await api.GET('/api/account')
+  if (error || !data) throw new Error('Gmail account status is unavailable')
   return data
 }
 
@@ -103,4 +113,24 @@ export async function getActionPlan(planId: string): Promise<ActionPlanView> {
   })
   if (error || !data) throw new Error('Action plan could not be loaded')
   return data
+}
+
+export type ActionView = components['schemas']['ActionResponse']
+
+export async function confirmActionPlan(
+  planId: string,
+  digest: string,
+): Promise<ActionView[]> {
+  const { data, error } = await api.POST('/api/action-plans/{plan_id}/confirm', {
+    params: { path: { plan_id: planId } },
+    headers: await mutationHeaders(),
+    body: { digest },
+  })
+  if (error || !data) {
+    const detail = (error as { detail?: { code?: string; message?: string } } | undefined)?.detail
+    const failure = new Error(detail?.message ?? 'Action plan confirmation failed')
+    failure.name = detail?.code ?? 'action_confirmation_failed'
+    throw failure
+  }
+  return data.items
 }

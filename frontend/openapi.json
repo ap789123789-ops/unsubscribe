@@ -121,6 +121,25 @@
         "operationId": "start_google_oauth_auth_google_start_post",
         "parameters": [
           {
+            "name": "intent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/OAuthIntent",
+              "default": "read"
+            }
+          },
+          {
+            "name": "return_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "/review",
+              "title": "Return To"
+            }
+          },
+          {
             "name": "X-CSRF-Token",
             "in": "header",
             "required": false,
@@ -205,15 +224,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OAuthCompleteResponse"
-                }
-              }
-            }
+          "307": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -221,6 +233,27 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account": {
+      "get": {
+        "tags": [
+          "gmail-auth"
+        ],
+        "summary": "Account Status",
+        "operationId": "account_status_api_account_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
                 }
               }
             }
@@ -582,10 +615,131 @@
           }
         }
       }
+    },
+    "/api/action-plans/{plan_id}/confirm": {
+      "post": {
+        "tags": [
+          "action-plans"
+        ],
+        "summary": "Confirm Plan",
+        "operationId": "confirm_plan_api_action_plans__plan_id__confirm_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "unsubscribe_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unsubscribe Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AccountResponse": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected",
+          "scopes"
+        ],
+        "title": "AccountResponse"
+      },
+      "ActionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActionResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ActionListResponse"
+      },
       "ActionPlanResponse": {
         "properties": {
           "id": {
@@ -616,6 +770,34 @@
           "items"
         ],
         "title": "ActionPlanResponse"
+      },
+      "ActionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "candidate_id",
+          "method",
+          "state"
+        ],
+        "title": "ActionResponse"
       },
       "CandidateCorrectionRequest": {
         "properties": {
@@ -762,26 +944,36 @@
         "type": "object",
         "title": "HealthResponse"
       },
-      "OAuthCompleteResponse": {
+      "MailPreviewResponse": {
         "properties": {
-          "connected": {
-            "type": "boolean",
-            "title": "Connected",
-            "default": true
+          "recipient": {
+            "type": "string",
+            "title": "Recipient"
           },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Scopes"
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
           }
         },
         "type": "object",
         "required": [
-          "scopes"
+          "recipient",
+          "subject",
+          "body"
         ],
-        "title": "OAuthCompleteResponse"
+        "title": "MailPreviewResponse"
+      },
+      "OAuthIntent": {
+        "type": "string",
+        "enum": [
+          "read",
+          "send"
+        ],
+        "title": "OAuthIntent"
       },
       "OAuthStartResponse": {
         "properties": {
@@ -800,6 +992,21 @@
           "authorization_url"
         ],
         "title": "OAuthStartResponse"
+      },
+      "PlanConfirmRequest": {
+        "properties": {
+          "digest": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Digest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "digest"
+        ],
+        "title": "PlanConfirmRequest"
       },
       "PlanCreateRequest": {
         "properties": {
@@ -844,6 +1051,16 @@
           "target_display": {
             "type": "string",
             "title": "Target Display"
+          },
+          "mail_preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MailPreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
