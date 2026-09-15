@@ -241,3 +241,27 @@ def test_startup_recognizes_a_pre_checkpoint_unversioned_database(tmp_path) -> N
         {column["name"] for column in schema.get_columns("scan_checkpoints")}
     )
     assert schema.get_pk_constraint("action_events")["constrained_columns"] == ["stream_sequence"]
+
+
+def test_startup_upgrades_an_unversioned_recovery_schema_to_activity_metadata(tmp_path) -> None:
+    database_path = tmp_path / "pre-activity.sqlite3"
+    database_url = f"sqlite:///{database_path}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+    command.upgrade(config, "20260914_0003")
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE alembic_version"))
+    engine.dispose()
+
+    run_migrations(database_url)
+
+    migrated = create_engine(database_url)
+    schema = inspect(migrated)
+    assert {"display_sender", "display_subject", "target_display"}.issubset(
+        {column["name"] for column in schema.get_columns("unsubscribe_actions")}
+    )
+    with migrated.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "20260914_0004"
+        )

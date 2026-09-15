@@ -20,6 +20,7 @@ LEGACY_CORE_TABLES = {
     "unsubscribe_actions",
     "action_events",
 }
+ACTIVITY_ACTION_COLUMNS = {"display_sender", "display_subject", "target_display"}
 
 
 class UnrecognizedLegacySchema(RuntimeError):
@@ -67,6 +68,11 @@ def run_migrations(database_url: str) -> None:
             if "action_events" in tables
             else set()
         )
+        action_columns = (
+            {column["name"] for column in inspector.get_columns("unsubscribe_actions")}
+            if "unsubscribe_actions" in tables
+            else set()
+        )
     finally:
         engine.dispose()
     if tables and "alembic_version" not in tables:
@@ -81,7 +87,15 @@ def run_migrations(database_url: str) -> None:
         elif {"days", "max_messages"}.issubset(checkpoint_columns) and (
             "stream_sequence" in event_columns
         ):
-            legacy_revision = "head"
+            activity_columns = ACTIVITY_ACTION_COLUMNS.intersection(action_columns)
+            if activity_columns == ACTIVITY_ACTION_COLUMNS:
+                legacy_revision = "20260914_0004"
+            elif not activity_columns:
+                legacy_revision = "20260914_0003"
+            else:
+                raise UnrecognizedLegacySchema(
+                    "The unversioned database has partial activity metadata"
+                )
         else:
             raise UnrecognizedLegacySchema(
                 "The unversioned database has an unsupported partial migration shape"
