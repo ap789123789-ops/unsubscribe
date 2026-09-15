@@ -58,6 +58,24 @@ inspect/correct classifications, select subscriptions, and confirm the exact act
 
 For split frontend development, run `make dev-backend` and `make dev-frontend` in separate terminals.
 
+## Local diagnostics
+
+Sanitized operational errors are written to `.local/logs/unsubscribe.log` and rotated at 1 MB with
+three backups. The active log and every rotated backup use owner-only (`0600`) permissions. Each scan
+failure records its scan ID, safe error code, exception type, and stack locations; email content,
+provider error text, credentials, tokens, and signed URLs are excluded.
+
+```bash
+tail -f .local/logs/unsubscribe.log
+```
+
+`APP_LOG_FILE`, `APP_LOG_MAX_BYTES`, and `APP_LOG_BACKUP_COUNT` can override the defaults. The UI
+shows the safe backend error message, so only an actual Gmail read failure recommends reconnecting.
+Incomplete scans stay checkpointed but are not automatically replayed during startup. Retrying the
+same scan in the open UI reuses its scan ID. Once per backend process, that user-triggered retry
+re-fetches at most the scan's configured `max_messages` previously seen messages to rebuild the
+in-memory review catalog, then continues from the saved page checkpoint.
+
 ## Verification
 
 ```bash
@@ -72,6 +90,8 @@ integration/eval tests, frontend lint/type/component/build checks, OpenAPI clien
 and the full React–FastAPI Playwright suite with axe security/accessibility assertions.
 
 CI never receives Gmail or OpenAI secrets. It fakes only external providers and sender sites.
+The `test`, `verify`, and OpenAPI-generation commands also force external services off locally, so
+a developer's real `.env` and Keychain credentials cannot leak into automated tests.
 
 ## Safe credentialed read/classification smoke
 

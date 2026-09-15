@@ -73,6 +73,29 @@ def test_normalizer_safely_converts_html_and_obeys_model_budget() -> None:
     assert "[content truncated]" in normalized.model_text
 
 
+def test_normalizer_handles_descendants_of_removed_hidden_html() -> None:
+    message = GmailMessage(
+        id="nested-hidden",
+        thread_id="thread",
+        size_estimate=500,
+        payload={
+            "mimeType": "text/html",
+            "headers": [{"name": "Subject", "value": "Visible update"}],
+            "body": {
+                "data": encoded(
+                    "<section hidden><table><tr><td>tracking metadata</td></tr></table></section>"
+                    "<main><p>Visible newsletter update</p></main>"
+                )
+            },
+        },
+    )
+
+    normalized = EmailNormalizer().normalize(message)
+
+    assert normalized.text == "Visible newsletter update"
+    assert "tracking metadata" not in normalized.text
+
+
 def test_oversized_message_is_marked_for_abstention() -> None:
     message = GmailMessage(
         id="large",

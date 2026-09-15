@@ -52,7 +52,14 @@ export async function startScan(body: components['schemas']['ScanCreateRequest']
     headers: await mutationHeaders(),
     body,
   })
-  if (error || !data) throw new Error('Scan could not start')
+  if (error || !data) {
+    const detail = (
+      error as { detail?: { code?: string; message?: string } } | undefined
+    )?.detail
+    const failure = new Error(detail?.message ?? 'Scan failed. Check the local backend and retry.')
+    failure.name = detail?.code ?? 'scan_failed'
+    throw failure
+  }
   return data
 }
 

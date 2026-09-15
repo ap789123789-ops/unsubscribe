@@ -1,9 +1,13 @@
+import logging
 from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.scan.service import ScanRequest, ScanService
+from app.observability import safe_exception_stack
+from app.scan.service import ScanFailure, ScanRequest, ScanService
+
+logger = logging.getLogger(__name__)
 
 
 class ScanCreateRequest(BaseModel):
@@ -35,13 +39,37 @@ def create_scan_router(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Connect Gmail before starting a scan",
             )
-        result = await service.run(
-            ScanRequest(
-                scan_id=payload.scan_id,
-                days=payload.days,
-                max_messages=payload.max_messages,
+        try:
+            result = await service.run(
+                ScanRequest(
+                    scan_id=payload.scan_id,
+                    days=payload.days,
+                    max_messages=payload.max_messages,
+                )
             )
-        )
+        except ScanFailure as error:
+            cause = error.__cause__ or error
+            logger.error(
+                "scan_failed scan_id=%r code=%s cause=%s stack=%s",
+                payload.scan_id,
+                error.code,
+                type(cause).__name__,
+                safe_exception_stack(cause),
+            )
+            if error.code == "gmail_access_unavailable":
+                error_status = status.HTTP_502_BAD_GATEWAY
+                message = "Gmail could not be read. Reconnect Gmail, then retry the scan."
+            else:
+                error_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                message = "One email could not be processed. Progress was saved; retry the scan."
+            raise HTTPException(
+                status_code=error_status,
+                detail={
+                    "code": error.code,
+                    "message": message,
+                    "scan_id": payload.scan_id,
+                },
+            ) from error
         return ScanResponse(
             scan_id=result.scan_id,
             processed_count=result.processed_count,

@@ -27,6 +27,7 @@ from app.executors.mailto import MailtoExecutor
 from app.executors.rfc8058 import HttpxRfcTransport, Rfc8058Executor
 from app.gmail.google_gateway import GoogleOAuthProvider, StoredCredentialGmailGateway
 from app.gmail.oauth import OAuthCoordinator
+from app.observability import configure_app_logging
 from app.persistence.database import (
     create_database_engine,
     create_session_factory,
@@ -74,6 +75,7 @@ def create_app(
     recovery_service: StartupRecovery | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    configure_app_logging(settings)
     catalog_was_injected = candidate_catalog is not None
     candidate_catalog = candidate_catalog or InMemoryCandidateCatalog()
     url_policy = UrlSafetyPolicy()
@@ -82,7 +84,11 @@ def create_app(
         url_policy=None if catalog_was_injected else url_policy,
     )
     credential_store: KeyringCredentialStore | None = None
-    if oauth_coordinator is None and settings.google_client_secrets_file is not None:
+    if (
+        settings.enable_external_services
+        and oauth_coordinator is None
+        and settings.google_client_secrets_file is not None
+    ):
         try:
             credential_store = KeyringCredentialStore()
             oauth_coordinator = OAuthCoordinator(

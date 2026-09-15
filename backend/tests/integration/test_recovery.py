@@ -136,7 +136,7 @@ async def test_recovery_reconciles_mail_and_pauses_unknown_side_effects(tmp_path
     assert report.closed_browser_sessions == 1
 
 
-async def test_recovery_resumes_an_incomplete_read_only_scan_from_checkpoint(
+async def test_recovery_defers_an_incomplete_scan_until_the_user_retries(
     tmp_path,
 ) -> None:
     engine = create_database_engine(f"sqlite:///{tmp_path / 'scan-recovery.sqlite3'}")
@@ -182,12 +182,12 @@ async def test_recovery_resumes_an_incomplete_read_only_scan_from_checkpoint(
         scan_checkpoints=checkpoints,
     ).run()
 
-    assert report.resumed_scans == 1
-    assert report.rehydrated_messages == 1
-    assert received == ["already-read", "remaining"]
-    assert checkpoints.is_complete(request.scan_id) is True
-    assert gateway.read_attempts["already-read"] == 1
-    assert gateway.read_attempts["remaining"] == 1
+    assert report.deferred_scans == 1
+    assert report.resumed_scans == 0
+    assert report.rehydrated_messages == 0
+    assert received == []
+    assert checkpoints.is_complete(request.scan_id) is False
+    assert gateway.read_attempts == {}
 
 
 async def test_recovery_removes_only_expired_isolated_browser_profiles(tmp_path) -> None:

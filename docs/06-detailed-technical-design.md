@@ -466,17 +466,23 @@ For browser V1, **confirmed** requires visible main-content text matching a vers
 
 V1 does not emit provider payloads or email content to application logs. The local activity view is
 sourced from append-only `action_events`, not transient process output. OpenAI traces are disabled
-for email-payload privacy. Correlated redacted operational logging and local model-run metrics are
-future observability work, not part of the V1 release claim.
+for email-payload privacy. Rotating project-local logs record a scan ID, safe error code, exception
+type, and stack locations without provider-controlled exception text; the active log and all backups
+remain owner-only (`0600`) across rollover. FastAPI returns distinct safe codes for Gmail access and
+message-processing failures so the UI does not misdiagnose every error as an OAuth problem. Local
+model-run metrics remain future observability work.
 
-FastAPI's lifespan keeps readiness false while Alembic migrates and `RecoveryService` runs. Incomplete
-read-only scans re-fetch checkpointed `seen_ids` to rebuild the in-memory review catalog, then resume
-from stored `{scan_id, days, max_messages, next_page_token}` data; bodies still are not persisted.
-Actions left `executing` become `needs_user` without repeating the side effect; `mailto:` first looks
-up its deterministic RFC `Message-ID` in Gmail Sent and becomes `submitted` only when found. Terminal
-actions are untouched. Expired inactive `session-*` browser profiles are removed without following
-symlinks. `action_events` are replayed in stable order through `/events/actions/{plan_id}` using
-`Last-Event-ID`; payloads contain only state, safe evidence codes/details, and opaque IDs.
+FastAPI's lifespan keeps readiness false only while Alembic and bounded local recovery run. Incomplete
+read-only scans remain checkpointed and are reported as deferred; startup never performs an unbounded
+Gmail/model replay before the API becomes ready. An immediate UI retry reuses the same `scan_id`.
+Once per process, this explicit request re-fetches and reprocesses at most `max_messages` stored
+`seen_ids` to rebuild transient review state, then continues from the saved `next_page_token`; bodies
+still are not persisted. Actions left `executing` become `needs_user` without repeating the side effect; `mailto:`
+first looks up its deterministic RFC `Message-ID` in Gmail Sent and becomes `submitted` only when
+found. Terminal actions are untouched. Expired inactive `session-*` browser profiles are removed
+without following symlinks. `action_events` are replayed in stable order through
+`/events/actions/{plan_id}` using `Last-Event-ID`; payloads contain only state, safe evidence
+codes/details, and opaque IDs.
 
 ## 14. Test and evaluation strategy
 

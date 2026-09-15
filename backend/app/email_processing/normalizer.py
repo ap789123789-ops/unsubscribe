@@ -107,6 +107,8 @@ class EmailNormalizer:
         for element in soup(["script", "style", "noscript", "svg", "template"]):
             element.decompose()
         for element in list(soup.find_all(True)):
+            if element.attrs is None:
+                continue
             style = str(element.get("style", "")).replace(" ", "").lower()
             if (
                 element.has_attr("hidden")

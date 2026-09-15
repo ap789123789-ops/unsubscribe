@@ -2,7 +2,7 @@ import asyncio
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 
 from app.gmail.protocols import GmailGateway, GmailMessage
 
@@ -31,6 +31,15 @@ class ScanResult:
 class RehydrationResult:
     rehydrated: int
     failed: int
+
+
+ScanFailureCode = Literal["gmail_access_unavailable", "message_processing_failed"]
+
+
+class ScanFailure(RuntimeError):
+    def __init__(self, code: ScanFailureCode) -> None:
+        self.code = code
+        super().__init__(code)
 
 
 class ScanCheckpointStore(Protocol):
@@ -110,43 +119,65 @@ class ScanService:
         self._checkpoints = checkpoints
         self._message_sink = message_sink
         self._retry_delays = retry_delays
+        self._rehydrated_scan_ids: set[str] = set()
+        self._scan_locks: dict[str, asyncio.Lock] = {}
 
     async def rehydrate(self, request: ScanRequest) -> RehydrationResult:
         """Rebuild transient review state from checkpointed Gmail message IDs."""
         rehydrated = 0
         failed = 0
-        for message_id in self._checkpoints.seen_message_ids(request.scan_id):
+        message_ids = self._checkpoints.seen_message_ids(request.scan_id)[: request.max_messages]
+        for message_id in message_ids:
             try:
                 message = await self._read_with_retry(message_id)
+            except Exception as error:
+                raise ScanFailure("gmail_access_unavailable") from error
+            try:
                 sink_result = self._message_sink(message)
                 if inspect.isawaitable(sink_result):
                     await sink_result
-            except Exception:  # noqa: BLE001 - one missing message must not block scan recovery
-                failed += 1
-                continue
+            except Exception as error:
+                raise ScanFailure("message_processing_failed") from error
             rehydrated += 1
         return RehydrationResult(rehydrated=rehydrated, failed=failed)
 
     async def run(self, request: ScanRequest) -> ScanResult:
+        lock = self._scan_locks.setdefault(request.scan_id, asyncio.Lock())
+        async with lock:
+            return await self._run_locked(request)
+
+    async def _run_locked(self, request: ScanRequest) -> ScanResult:
         self._checkpoints.remember_request(request)
+        if request.scan_id not in self._rehydrated_scan_ids:
+            await self.rehydrate(request)
+            self._rehydrated_scan_ids.add(request.scan_id)
         if self._checkpoints.is_complete(request.scan_id):
             return ScanResult(request.scan_id, self._checkpoints.count(request.scan_id), True)
 
         page_token = self._checkpoints.page_token(request.scan_id)
         while self._checkpoints.count(request.scan_id) < request.max_messages:
             remaining = request.max_messages - self._checkpoints.count(request.scan_id)
-            page = await self._gateway.list_messages(
-                query=f"newer_than:{request.days}d",
-                max_results=min(100, remaining),
-                page_token=page_token,
-            )
+            try:
+                page = await self._gateway.list_messages(
+                    query=f"newer_than:{request.days}d",
+                    max_results=min(100, remaining),
+                    page_token=page_token,
+                )
+            except Exception as error:
+                raise ScanFailure("gmail_access_unavailable") from error
             for reference in page.messages:
                 if self._checkpoints.has_seen(request.scan_id, reference.id):
                     continue
-                message = await self._read_with_retry(reference.id)
-                sink_result = self._message_sink(message)
-                if inspect.isawaitable(sink_result):
-                    await sink_result
+                try:
+                    message = await self._read_with_retry(reference.id)
+                except Exception as error:
+                    raise ScanFailure("gmail_access_unavailable") from error
+                try:
+                    sink_result = self._message_sink(message)
+                    if inspect.isawaitable(sink_result):
+                        await sink_result
+                except Exception as error:
+                    raise ScanFailure("message_processing_failed") from error
                 self._checkpoints.mark_seen(request.scan_id, reference.id)
                 if self._checkpoints.count(request.scan_id) >= request.max_messages:
                     break

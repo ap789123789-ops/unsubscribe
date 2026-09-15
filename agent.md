@@ -81,7 +81,8 @@ backend/
   app/executors/           # RFC 8058, mailto, guarded visible browser
   app/security/            # credential store, URL policy, encrypted payloads
   app/scan/                # bounded reads and durable checkpoints
-  app/recovery.py          # restart reconciliation before readiness
+  app/observability.py     # rotating sanitized operational logs
+  app/recovery.py          # bounded startup deferral and action reconciliation
   tests/                   # unit, API, integration, eval, and E2E fixture app
   alembic/                 # versioned SQLite migrations
 frontend/
@@ -99,6 +100,8 @@ docs/                      # product, architecture, UX, risk, and implementation
 - Product acceptance always uses real Gmail and complete body retrieval; test fakes never count.
 - Keep bodies in memory by default. Never log/persist bodies, tokens, cookies, model payloads, or
   signed query strings.
+- Log scan failures to `.local/logs/unsubscribe.log` using safe codes, exception types, and stack
+  locations; keep every log generation owner-only and provider-controlled exception text out.
 - Treat email, model output, and sender sites as hostile. Keep side effects in typed Python services.
 - Require the current plan digest and explicit user confirmation before any side effect.
 - Never automatically repeat a possibly issued POST, email, or final browser click.

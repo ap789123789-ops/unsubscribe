@@ -3,6 +3,8 @@ from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -12,9 +14,13 @@ class Settings(BaseSettings):
     )
 
     env: str = "development"
+    enable_external_services: bool = True
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1024, le=65535)
     database_url: str = "sqlite:///./unsubscribe.db"
+    log_file: Path = PROJECT_ROOT / ".local" / "logs" / "unsubscribe.log"
+    log_max_bytes: int = Field(default=1_000_000, ge=10_000)
+    log_backup_count: int = Field(default=3, ge=1, le=10)
     openai_api_key: SecretStr | None = Field(
         default=None,
         validation_alias="OPENAI_API_KEY",

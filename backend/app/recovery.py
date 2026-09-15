@@ -27,6 +27,7 @@ class RecoveryReport:
     rehydrated_messages: int = 0
     rehydration_failures: int = 0
     failed_scans: int = 0
+    deferred_scans: int = 0
     removed_profiles: int = 0
     closed_browser_sessions: int = 0
 
@@ -59,6 +60,7 @@ class RecoveryService:
         rehydrated_messages = 0
         rehydration_failures = 0
         failed_scans = 0
+        deferred_scans = 0
         removed_profiles = 0
         active_browser_sessions = {
             snapshot.id
@@ -127,17 +129,8 @@ class RecoveryService:
                     ),
                 )
                 closed_browser_sessions += 1
-        if self._scan_service is not None and self._scan_checkpoints is not None:
-            for request in self._scan_checkpoints.incomplete_requests():
-                try:
-                    rehydration = await self._scan_service.rehydrate(request)
-                    rehydrated_messages += rehydration.rehydrated
-                    rehydration_failures += rehydration.failed
-                    await self._scan_service.run(request)
-                except Exception:  # noqa: BLE001 - checkpoint remains durable for a later retry
-                    failed_scans += 1
-                    continue
-                resumed_scans += 1
+        if self._scan_checkpoints is not None:
+            deferred_scans = len(self._scan_checkpoints.incomplete_requests())
         return RecoveryReport(
             reconciled_mail=reconciled_mail,
             paused_actions=paused_actions,
@@ -146,6 +139,7 @@ class RecoveryService:
             rehydrated_messages=rehydrated_messages,
             rehydration_failures=rehydration_failures,
             failed_scans=failed_scans,
+            deferred_scans=deferred_scans,
             removed_profiles=removed_profiles,
             closed_browser_sessions=closed_browser_sessions,
         )
