@@ -10,6 +10,7 @@ from agents import (
     function_tool,
 )
 from agents.models.openai_provider import OpenAIProvider
+from openai.types.shared import Reasoning
 
 from app.classification.models import ClassificationOutput
 from app.email_processing.normalizer import NormalizedEmail
@@ -60,7 +61,13 @@ class OpenAIAgentsClassifier:
             instructions=CLASSIFICATION_SYSTEM_PROMPT,
             output_type=ClassificationOutput,
             tools=[function_tool(related, name_override="get_related_message_samples")],
-            model_settings=ModelSettings(parallel_tool_calls=False, max_tokens=350),
+            model_settings=ModelSettings(
+                parallel_tool_calls=False,
+                max_tokens=1_200,
+                reasoning=Reasoning(effort="low"),
+                verbosity="low",
+                store=False,
+            ),
         )
         payload = {
             "message_id": email.gmail_id,
