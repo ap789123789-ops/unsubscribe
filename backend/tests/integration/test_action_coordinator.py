@@ -223,6 +223,53 @@ async def test_reviewed_rfc_retry_is_allowed_once_only_after_explicit_503(tmp_pa
     assert rfc.calls == 1
 
 
+async def test_reviewed_retry_records_failed_when_encrypted_payload_is_unavailable(
+    tmp_path,
+) -> None:
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'rfc-corrupt-retry.sqlite3'}")
+    initialize_database(engine)
+    sessions = create_session_factory(engine)
+    repository = ActionRepository(sessions)
+    action_id = uuid4()
+    action = ActionRecord(
+        id=action_id,
+        plan_id=uuid4(),
+        candidate_id=uuid4(),
+        idempotency_key="retry-rfc-corrupt-payload",
+        method=UnsubscribeMethod.RFC8058,
+        state=ActionState.EXECUTING,
+        encrypted_payload=PayloadCipher(b"x" * 32).encrypt(
+            action_id,
+            {"version": 1, "method": "rfc8058", "target": "https://example.com/retry"},
+        ),
+    )
+    persist_action(repository, action)
+    repository.set_state(
+        action.id,
+        ActionState.FAILED,
+        evidence_code="http_503",
+        safe_detail="The server rejected the request. A reviewed retry may be available.",
+    )
+    rfc = CountingRfc()
+    coordinator = ExecutionCoordinator(
+        plans=ActionPlanService(InMemoryCandidateCatalog()),
+        repository=repository,
+        cipher=PayloadCipher(b"r" * 32),
+        rfc8058=rfc,
+        mailto=MailtoExecutor(gmail=AuthorizedGmail(), journal=repository),
+        url_policy=AcceptingPolicy(),
+    )
+
+    result = await coordinator.review_and_retry(str(action.id))
+    activity = repository.get_activity(action.id)
+
+    assert result.state is ActionState.FAILED
+    assert result.retry_count == 1
+    assert activity is not None
+    assert activity.evidence_code == "stored_payload_unavailable"
+    assert rfc.calls == 0
+
+
 async def test_mailto_can_retry_only_when_missing_authorization_proves_no_send(tmp_path) -> None:
     engine = create_database_engine(f"sqlite:///{tmp_path / 'mailto-retry.sqlite3'}")
     initialize_database(engine)

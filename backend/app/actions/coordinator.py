@@ -183,33 +183,49 @@ class ExecutionCoordinator:
                 evidence_code="retry_started",
                 safe_detail="Started the one reviewed retry.",
             )
-            payload = self._cipher.decrypt(action.id, action.encrypted_payload)
-            if rfc_retry:
-                target = self._payload_string(payload, "target")
-                assert self._url_policy is not None
-                try:
-                    validated_target = await self._url_policy.validate_at_plan_time(target)
-                    result = await self._rfc8058.execute(Rfc8058Payload(target=validated_target))
-                except UnsafeTarget:
-                    result = ExecutionResult(
-                        state=ActionState.FAILED,
-                        evidence_code="target_revalidation_failed",
-                        safe_detail="The destination failed its reviewed safety check.",
+            try:
+                payload = self._cipher.decrypt(action.id, action.encrypted_payload)
+                self._validate_retry_payload(payload, action.method)
+                if rfc_retry:
+                    target = self._payload_string(payload, "target")
+                else:
+                    draft = ExactMailDraft(
+                        recipient=self._payload_string(payload, "recipient"),
+                        subject=self._payload_string(payload, "subject"),
+                        body=self._payload_string(payload, "body"),
                     )
-            else:
-                draft = ExactMailDraft(
-                    recipient=self._payload_string(payload, "recipient"),
-                    subject=self._payload_string(payload, "subject"),
-                    body=self._payload_string(payload, "body"),
+            except (ExecutionUnavailable, ValueError):
+                result = ExecutionResult(
+                    state=ActionState.FAILED,
+                    evidence_code="stored_payload_unavailable",
+                    safe_detail=(
+                        "The stored action could not be verified. Nothing was submitted, and this "
+                        "action will not be retried."
+                    ),
                 )
-                try:
-                    result = await self._mailto.execute(action_id, MailtoPayload(draft=draft))
-                except SendAuthorizationRequired:
-                    result = ExecutionResult(
-                        state=ActionState.NEEDS_USER,
-                        evidence_code="gmail_send_authorization_required",
-                        safe_detail="Gmail send permission is still unavailable.",
-                    )
+            else:
+                if rfc_retry:
+                    assert self._url_policy is not None
+                    try:
+                        validated_target = await self._url_policy.validate_at_plan_time(target)
+                        result = await self._rfc8058.execute(
+                            Rfc8058Payload(target=validated_target)
+                        )
+                    except UnsafeTarget:
+                        result = ExecutionResult(
+                            state=ActionState.FAILED,
+                            evidence_code="target_revalidation_failed",
+                            safe_detail="The destination failed its reviewed safety check.",
+                        )
+                else:
+                    try:
+                        result = await self._mailto.execute(action_id, MailtoPayload(draft=draft))
+                    except SendAuthorizationRequired:
+                        result = ExecutionResult(
+                            state=ActionState.NEEDS_USER,
+                            evidence_code="gmail_send_authorization_required",
+                            safe_detail="Gmail send permission is still unavailable.",
+                        )
             return self._repository.set_state(
                 action.id,
                 result.state,
@@ -224,6 +240,11 @@ class ExecutionCoordinator:
         if not isinstance(value, str):
             raise ExecutionUnavailable("The stored action payload is invalid")
         return value
+
+    @staticmethod
+    def _validate_retry_payload(payload: dict[str, object], method: UnsubscribeMethod) -> None:
+        if payload.get("version") != 1 or payload.get("method") != method.value:
+            raise ExecutionUnavailable("The stored action payload is invalid")
 
     def _build_action(self, plan: ActionPlan, item: PlannedAction) -> ActionRecord:
         semantic_fingerprint = hashlib.sha256(
