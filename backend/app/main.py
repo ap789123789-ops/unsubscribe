@@ -13,6 +13,7 @@ from app.actions.browser_sessions import BrowserSessionService
 from app.actions.coordinator import ExecutionCoordinator
 from app.actions.planner import ActionPlanService
 from app.api.action_plans import create_action_plan_router
+from app.api.activity import create_activity_router
 from app.api.auth import create_auth_router
 from app.api.browser_sessions import create_browser_session_router
 from app.api.candidates import create_candidate_router
@@ -146,6 +147,7 @@ def create_app(
                 ),
                 mailto=MailtoExecutor(gmail=gmail_gateway, journal=action_repository),
                 browser=browser_executor,
+                url_policy=url_policy,
             )
             browser_session_service = BrowserSessionService(
                 executor=browser_executor,
@@ -216,6 +218,13 @@ def create_app(
         frozenset(settings.allowed_origins),
     )
     application.include_router(local_security.router)
+    application.include_router(
+        create_activity_router(
+            event_repository,
+            local_security.require_mutation,
+            execution_coordinator,
+        )
+    )
     application.include_router(
         create_auth_router(oauth_coordinator, local_security.require_mutation)
     )

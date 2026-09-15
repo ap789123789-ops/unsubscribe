@@ -72,6 +72,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Activity */
+        get: operations["list_activity_api_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/actions/{action_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Activity */
+        post: operations["retry_activity_api_actions__action_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/google/start": {
         parameters: {
             query?: never;
@@ -366,6 +400,43 @@ export interface components {
             state: string;
             /** Browser Session Id */
             browser_session_id?: string | null;
+        };
+        /** ActivityActionListResponse */
+        ActivityActionListResponse: {
+            /** Items */
+            items: components["schemas"]["ActivityActionResponse"][];
+        };
+        /** ActivityActionResponse */
+        ActivityActionResponse: {
+            /** Id */
+            id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Sender */
+            sender: string;
+            /** Subject */
+            subject: string;
+            /** Target Display */
+            target_display: string;
+            /** Method */
+            method: string;
+            /** State */
+            state: string;
+            /** Evidence Code */
+            evidence_code: string | null;
+            /** Safe Detail */
+            safe_detail: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Retry Available */
+            retry_available: boolean;
+            /** Browser Session Id */
+            browser_session_id: string | null;
         };
         /** BrowserActionResponse */
         BrowserActionResponse: {
@@ -667,6 +738,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerificationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_activity_api_actions_get: {
+        parameters: {
+            query?: {
+                plan_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityActionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_activity_api_actions__action_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                action_id: string;
+            };
+            cookie?: {
+                unsubscribe_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityActionResponse"];
                 };
             };
             /** @description Validation Error */

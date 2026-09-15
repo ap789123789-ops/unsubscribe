@@ -150,6 +150,36 @@ class ActionRepository:
                 )
             return tuple(activity)
 
+    def get_activity(self, action_id: UUID | str) -> ActivityRecord | None:
+        with self._session_factory() as session:
+            row = session.get(UnsubscribeActionORM, str(action_id))
+            if row is None:
+                return None
+            latest_event = session.scalar(
+                select(ActionEventORM)
+                .where(ActionEventORM.action_id == row.id)
+                .order_by(ActionEventORM.stream_sequence.desc())
+                .limit(1)
+            )
+            return ActivityRecord(
+                action=self._from_row(row),
+                evidence_code=(latest_event.evidence_code if latest_event else None),
+                safe_detail=(latest_event.safe_detail if latest_event else None),
+            )
+
+    def consume_retry(self, action_id: UUID | str) -> ActionRecord:
+        with self._session_factory.begin() as session:
+            row = session.get(UnsubscribeActionORM, str(action_id))
+            if row is None:
+                raise KeyError(str(action_id))
+            if row.retry_count >= 1:
+                raise ValueError("The reviewed retry allowance has already been used")
+            row.retry_count += 1
+            row.updated_at = datetime.now(UTC)
+        updated = self.get(UUID(str(action_id)))
+        assert updated is not None
+        return updated
+
     def list_events(
         self,
         plan_id: UUID | str,

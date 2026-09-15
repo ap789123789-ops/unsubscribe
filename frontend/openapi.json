@@ -168,6 +168,142 @@
         }
       }
     },
+    "/api/actions": {
+      "get": {
+        "tags": [
+          "activity"
+        ],
+        "summary": "List Activity",
+        "operationId": "list_activity_api_actions_get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 36
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityActionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/actions/{action_id}/retry": {
+      "post": {
+        "tags": [
+          "activity"
+        ],
+        "summary": "Retry Activity",
+        "operationId": "retry_activity_api_actions__action_id__retry_post",
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "unsubscribe_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unsubscribe Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/google/start": {
       "post": {
         "tags": [
@@ -1171,6 +1307,117 @@
           "state"
         ],
         "title": "ActionResponse"
+      },
+      "ActivityActionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityActionResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ActivityActionListResponse"
+      },
+      "ActivityActionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "target_display": {
+            "type": "string",
+            "title": "Target Display"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "evidence_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Code"
+          },
+          "safe_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Detail"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "retry_available": {
+            "type": "boolean",
+            "title": "Retry Available"
+          },
+          "browser_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "plan_id",
+          "candidate_id",
+          "sender",
+          "subject",
+          "target_display",
+          "method",
+          "state",
+          "evidence_code",
+          "safe_detail",
+          "updated_at",
+          "retry_available",
+          "browser_session_id"
+        ],
+        "title": "ActivityActionResponse"
       },
       "BrowserActionResponse": {
         "properties": {
