@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     frontend_dist: Path | None = None
     google_client_secrets_file: Path | None = None
     oauth_redirect_uri: str = "http://127.0.0.1:8000/auth/google/callback"
+    browser_headless: bool = False
+    browser_profile_root: Path | None = None
+    browser_navigation_timeout_ms: int = Field(default=10_000, ge=1_000, le=30_000)
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost", "testserver")
     allowed_origins: tuple[str, ...] = (
         "http://127.0.0.1:8000",

@@ -5,16 +5,19 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.actions.browser_sessions import BrowserSessionService
 from app.actions.coordinator import ExecutionCoordinator
 from app.actions.planner import ActionPlanService
 from app.api.action_plans import create_action_plan_router
 from app.api.auth import create_auth_router
+from app.api.browser_sessions import create_browser_session_router
 from app.api.candidates import create_candidate_router
 from app.api.health import router as health_router
 from app.api.scans import create_scan_router
 from app.api.security import SessionRegistry, create_local_security
 from app.classification.openai_agent import OpenAIAgentsClassifier
 from app.config import Settings
+from app.executors.browser import BrowserExecutor, BrowserSessionRegistry
 from app.executors.mailto import MailtoExecutor
 from app.executors.rfc8058 import HttpxRfcTransport, Rfc8058Executor
 from app.gmail.google_gateway import GoogleOAuthProvider, StoredCredentialGmailGateway
@@ -45,6 +48,7 @@ def create_app(
     candidate_catalog: InMemoryCandidateCatalog | None = None,
     action_plan_service: ActionPlanService | None = None,
     execution_coordinator: ExecutionCoordinator | None = None,
+    browser_session_service: BrowserSessionService | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     catalog_was_injected = candidate_catalog is not None
@@ -92,6 +96,13 @@ def create_app(
     ):
         try:
             repository = ActionRepository(session_factory)
+            browser_registry = BrowserSessionRegistry(settings.browser_profile_root)
+            browser_executor = BrowserExecutor(
+                policy=url_policy,
+                registry=browser_registry,
+                headless=settings.browser_headless,
+                navigation_timeout_ms=settings.browser_navigation_timeout_ms,
+            )
             execution_coordinator = ExecutionCoordinator(
                 plans=action_plan_service,
                 repository=repository,
@@ -101,6 +112,12 @@ def create_app(
                     transport=HttpxRfcTransport(),
                 ),
                 mailto=MailtoExecutor(gmail=gmail_gateway, journal=repository),
+                browser=browser_executor,
+            )
+            browser_session_service = BrowserSessionService(
+                executor=browser_executor,
+                registry=browser_registry,
+                repository=repository,
             )
         except PayloadKeyUnavailable:
             execution_coordinator = None
@@ -123,6 +140,12 @@ def create_app(
     application.include_router(local_security.router)
     application.include_router(
         create_auth_router(oauth_coordinator, local_security.require_mutation)
+    )
+    application.include_router(
+        create_browser_session_router(
+            browser_session_service,
+            local_security.require_mutation,
+        )
     )
     application.include_router(create_scan_router(scan_service, local_security.require_mutation))
     application.include_router(

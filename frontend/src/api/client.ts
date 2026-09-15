@@ -134,3 +134,51 @@ export async function confirmActionPlan(
   }
   return data.items
 }
+
+export async function listPlanActions(planId: string): Promise<ActionView[]> {
+  const { data, error } = await api.GET('/api/action-plans/{plan_id}/actions', {
+    params: { path: { plan_id: planId } },
+  })
+  if (error || !data) throw new Error('Action activity could not be loaded')
+  return data.items
+}
+
+export type BrowserSessionView = components['schemas']['BrowserSessionResponse']
+
+export async function getBrowserSession(sessionId: string): Promise<BrowserSessionView> {
+  const { data, error } = await api.GET('/api/browser-sessions/{browser_session_id}', {
+    params: { path: { browser_session_id: sessionId } },
+  })
+  if (error || !data) throw new Error('Browser intervention is no longer available')
+  return data
+}
+
+export async function takeOverBrowser(sessionId: string): Promise<BrowserSessionView> {
+  const { data, error } = await api.POST(
+    '/api/browser-sessions/{browser_session_id}/take-over',
+    {
+      params: { path: { browser_session_id: sessionId } },
+      headers: await mutationHeaders(),
+    },
+  )
+  if (error || !data) throw new Error('The guarded browser could not be shown')
+  return data
+}
+
+export async function resumeBrowser(sessionId: string) {
+  const { data, error } = await api.POST('/api/browser-sessions/{browser_session_id}/resume', {
+    params: { path: { browser_session_id: sessionId } },
+    headers: await mutationHeaders(),
+  })
+  if (error || !data) throw new Error('The guarded browser could not resume')
+  return data
+}
+
+export async function cancelBrowser(sessionId: string) {
+  const { data, error } = await api.POST('/api/browser-sessions/{browser_session_id}/cancel', {
+    params: { path: { browser_session_id: sessionId } },
+    headers: await mutationHeaders(),
+  })
+  if (error || !data) throw new Error('The guarded browser could not be stopped')
+  return data
+}

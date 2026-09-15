@@ -51,6 +51,18 @@ async def test_mailto_plan_contains_exact_bounded_preview() -> None:
     assert "mailto:" not in plan.items[0].target_display
 
 
+async def test_repeated_review_creates_a_fresh_consent_snapshot() -> None:
+    catalog = catalog_for(UnsubscribeMethod.RFC8058, "https://example.com/unsubscribe")
+    candidate = catalog.candidates()[0]
+    service = ActionPlanService(catalog, url_policy=AcceptingPolicy())
+
+    first = await service.create([PlanSelection(candidate.id, candidate.revision)])
+    second = await service.create([PlanSelection(candidate.id, candidate.revision)])
+
+    assert first.id != second.id
+    assert first.digest == second.digest
+
+
 @pytest.mark.parametrize(
     "target",
     [

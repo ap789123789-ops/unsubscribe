@@ -319,6 +319,270 @@
         }
       }
     },
+    "/api/browser-sessions/{browser_session_id}": {
+      "get": {
+        "tags": [
+          "browser-sessions"
+        ],
+        "summary": "Get Browser Session",
+        "operationId": "get_browser_session_api_browser_sessions__browser_session_id__get",
+        "parameters": [
+          {
+            "name": "browser_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Browser Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/browser-sessions/{browser_session_id}/take-over": {
+      "post": {
+        "tags": [
+          "browser-sessions"
+        ],
+        "summary": "Take Over Browser",
+        "operationId": "take_over_browser_api_browser_sessions__browser_session_id__take_over_post",
+        "parameters": [
+          {
+            "name": "browser_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Browser Session Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "unsubscribe_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unsubscribe Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/browser-sessions/{browser_session_id}/resume": {
+      "post": {
+        "tags": [
+          "browser-sessions"
+        ],
+        "summary": "Resume Browser",
+        "operationId": "resume_browser_api_browser_sessions__browser_session_id__resume_post",
+        "parameters": [
+          {
+            "name": "browser_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Browser Session Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "unsubscribe_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unsubscribe Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/browser-sessions/{browser_session_id}/cancel": {
+      "post": {
+        "tags": [
+          "browser-sessions"
+        ],
+        "summary": "Cancel Browser",
+        "operationId": "cancel_browser_api_browser_sessions__browser_session_id__cancel_post",
+        "parameters": [
+          {
+            "name": "browser_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Browser Session Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "unsubscribe_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unsubscribe Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/scans": {
       "post": {
         "tags": [
@@ -699,6 +963,48 @@
           }
         }
       }
+    },
+    "/api/action-plans/{plan_id}/actions": {
+      "get": {
+        "tags": [
+          "action-plans"
+        ],
+        "summary": "List Plan Actions",
+        "operationId": "list_plan_actions_api_action_plans__plan_id__actions_get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -788,6 +1094,17 @@
           "state": {
             "type": "string",
             "title": "State"
+          },
+          "browser_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser Session Id"
           }
         },
         "type": "object",
@@ -798,6 +1115,82 @@
           "state"
         ],
         "title": "ActionResponse"
+      },
+      "BrowserActionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state"
+        ],
+        "title": "BrowserActionResponse"
+      },
+      "BrowserSessionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "action_id": {
+            "type": "string",
+            "title": "Action Id"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "blocker_code": {
+            "type": "string",
+            "title": "Blocker Code"
+          },
+          "blocker_detail": {
+            "type": "string",
+            "title": "Blocker Detail"
+          },
+          "origin": {
+            "type": "string",
+            "title": "Origin"
+          },
+          "navigation_count": {
+            "type": "integer",
+            "title": "Navigation Count"
+          },
+          "blocked_request_count": {
+            "type": "integer",
+            "title": "Blocked Request Count"
+          },
+          "final_click_issued": {
+            "type": "boolean",
+            "title": "Final Click Issued"
+          },
+          "manual_takeover": {
+            "type": "boolean",
+            "title": "Manual Takeover"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "action_id",
+          "state",
+          "blocker_code",
+          "blocker_detail",
+          "origin",
+          "navigation_count",
+          "blocked_request_count",
+          "final_click_issued",
+          "manual_takeover"
+        ],
+        "title": "BrowserSessionResponse"
       },
       "CandidateCorrectionRequest": {
         "properties": {

@@ -10,7 +10,7 @@ from app.actions.planner import (
     PlanDigestMismatch,
     PlanSelection,
 )
-from app.domain.models import ActionRecord
+from app.domain.models import ActionRecord, UnsubscribeMethod
 from app.executors.mailto import SendAuthorizationRequired
 from app.pipeline import StaleCandidate
 
@@ -56,6 +56,7 @@ class ActionResponse(BaseModel):
     candidate_id: str
     method: str
     state: str
+    browser_session_id: str | None = None
 
 
 class ActionListResponse(BaseModel):
@@ -96,6 +97,9 @@ def action_response(action: ActionRecord) -> ActionResponse:
         candidate_id=str(action.candidate_id),
         method=action.method.value,
         state=action.state.value,
+        browser_session_id=(
+            action.external_id if action.method is UnsubscribeMethod.BROWSER else None
+        ),
     )
 
 
@@ -177,6 +181,16 @@ def create_action_plan_router(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={"code": "execution_unavailable", "message": str(error)},
             ) from error
+        return ActionListResponse(items=[action_response(action) for action in actions])
+
+    @router.get(
+        "/api/action-plans/{plan_id}/actions",
+        response_model=ActionListResponse,
+    )
+    async def list_plan_actions(plan_id: str) -> ActionListResponse:
+        if coordinator is None:
+            return ActionListResponse(items=[])
+        actions = coordinator.actions_for_plan(plan_id)
         return ActionListResponse(items=[action_response(action) for action in actions])
 
     return router

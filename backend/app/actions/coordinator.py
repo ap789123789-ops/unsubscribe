@@ -6,8 +6,9 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from app.actions.planner import ActionPlan, ActionPlanService, PlannedAction
 from app.domain.models import ActionRecord, UnsubscribeMethod
 from app.domain.state_machine import ActionState
+from app.executors.browser import BrowserExecutor
 from app.executors.mailto import MailtoExecutor, SendAuthorizationRequired
-from app.executors.models import ExecutionResult, MailtoPayload, Rfc8058Payload
+from app.executors.models import BrowserPayload, ExecutionResult, MailtoPayload, Rfc8058Payload
 from app.executors.rfc8058 import Rfc8058Executor
 from app.persistence.repositories import ActionRepository
 from app.security.payload_crypto import PayloadCipher
@@ -26,12 +27,14 @@ class ExecutionCoordinator:
         cipher: PayloadCipher,
         rfc8058: Rfc8058Executor,
         mailto: MailtoExecutor,
+        browser: BrowserExecutor | None = None,
     ) -> None:
         self._plans = plans
         self._repository = repository
         self._cipher = cipher
         self._rfc8058 = rfc8058
         self._mailto = mailto
+        self._browser = browser
         self._lock = asyncio.Lock()
 
     async def confirm_and_execute(
@@ -80,11 +83,16 @@ class ExecutionCoordinator:
                             safe_detail="Gmail send permission is no longer available.",
                         )
                 else:
-                    result = ExecutionResult(
-                        state=ActionState.NEEDS_USER,
-                        evidence_code="browser_executor_pending",
-                        safe_detail="This website action requires the isolated browser step.",
-                    )
+                    if self._browser is None or item.validated_target is None:
+                        result = ExecutionResult(
+                            state=ActionState.NEEDS_USER,
+                            evidence_code="browser_executor_unavailable",
+                            safe_detail="The isolated browser is not available.",
+                        )
+                    else:
+                        result = await self._browser.execute(
+                            str(action.id), BrowserPayload(target=item.validated_target)
+                        )
                 results.append(
                     self._repository.set_state(
                         action.id,
@@ -95,6 +103,9 @@ class ExecutionCoordinator:
                     )
                 )
             return tuple(results)
+
+    def actions_for_plan(self, plan_id: str) -> tuple[ActionRecord, ...]:
+        return self._repository.list_for_plan(plan_id)
 
     def _build_action(self, plan: ActionPlan, item: PlannedAction) -> ActionRecord:
         action_id = uuid5(NAMESPACE_URL, f"{plan.id}:{item.candidate_id}:{item.revision}")

@@ -110,12 +110,6 @@ class ActionPlanService:
         digest = hashlib.sha256(
             json.dumps(digest_items, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        existing = next(
-            (candidate for candidate in self._plans.values() if candidate.digest == digest),
-            None,
-        )
-        if existing is not None:
-            return existing
         plan = ActionPlan(id=str(uuid4()), digest=digest, items=tuple(items))
         self._plans[plan.id] = plan
         return plan

@@ -123,6 +123,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/browser-sessions/{browser_session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Browser Session */
+        get: operations["get_browser_session_api_browser_sessions__browser_session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/browser-sessions/{browser_session_id}/take-over": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take Over Browser */
+        post: operations["take_over_browser_api_browser_sessions__browser_session_id__take_over_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/browser-sessions/{browser_session_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Browser */
+        post: operations["resume_browser_api_browser_sessions__browser_session_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/browser-sessions/{browser_session_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Browser */
+        post: operations["cancel_browser_api_browser_sessions__browser_session_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans": {
         parameters: {
             query?: never;
@@ -225,6 +293,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/action-plans/{plan_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plan Actions */
+        get: operations["list_plan_actions_api_action_plans__plan_id__actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -262,6 +347,38 @@ export interface components {
             method: string;
             /** State */
             state: string;
+            /** Browser Session Id */
+            browser_session_id?: string | null;
+        };
+        /** BrowserActionResponse */
+        BrowserActionResponse: {
+            /** Id */
+            id: string;
+            /** State */
+            state: string;
+        };
+        /** BrowserSessionResponse */
+        BrowserSessionResponse: {
+            /** Id */
+            id: string;
+            /** Action Id */
+            action_id: string;
+            /** State */
+            state: string;
+            /** Blocker Code */
+            blocker_code: string;
+            /** Blocker Detail */
+            blocker_detail: string;
+            /** Origin */
+            origin: string;
+            /** Navigation Count */
+            navigation_count: number;
+            /** Blocked Request Count */
+            blocked_request_count: number;
+            /** Final Click Issued */
+            final_click_issued: boolean;
+            /** Manual Takeover */
+            manual_takeover: boolean;
         };
         /** CandidateCorrectionRequest */
         CandidateCorrectionRequest: {
@@ -630,6 +747,142 @@ export interface operations {
             };
         };
     };
+    get_browser_session_api_browser_sessions__browser_session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                browser_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    take_over_browser_api_browser_sessions__browser_session_id__take_over_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                browser_session_id: string;
+            };
+            cookie?: {
+                unsubscribe_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_browser_api_browser_sessions__browser_session_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                browser_session_id: string;
+            };
+            cookie?: {
+                unsubscribe_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_browser_api_browser_sessions__browser_session_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                browser_session_id: string;
+            };
+            cookie?: {
+                unsubscribe_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_scan_api_scans_post: {
         parameters: {
             query?: never;
@@ -812,6 +1065,37 @@ export interface operations {
                 "application/json": components["schemas"]["PlanConfirmRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plan_actions_api_action_plans__plan_id__actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -16,6 +16,11 @@ class MailtoPayload:
 
 
 @dataclass(frozen=True)
+class BrowserPayload:
+    target: ValidatedTarget
+
+
+@dataclass(frozen=True)
 class ExecutionResult:
     state: ActionState
     evidence_code: str

@@ -15,6 +15,7 @@ dependencies = [
   "keyring>=25.6,<27",
   "openai-agents>=0.2,<1",
   "pydantic-settings>=2.7,<3",
+  "playwright>=1.62,<1.63",
   "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.34,<1",
 ]
