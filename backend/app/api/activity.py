@@ -13,8 +13,6 @@ from app.domain.models import UnsubscribeMethod
 from app.domain.state_machine import ActionState
 from app.persistence.repositories import ActionRepository, ActivityRecord
 
-RETRYABLE_EVIDENCE = frozenset({"http_429", "http_503", "gmail_send_authorization_required"})
-
 
 class ActivityActionResponse(BaseModel):
     id: str
@@ -38,10 +36,19 @@ class ActivityActionListResponse(BaseModel):
 
 def activity_response(record: ActivityRecord) -> ActivityActionResponse:
     action = record.action
+    rfc_retry = (
+        action.method is UnsubscribeMethod.RFC8058
+        and action.state is ActionState.FAILED
+        and record.evidence_code in {"http_429", "http_503"}
+    )
+    mailto_retry = (
+        action.method is UnsubscribeMethod.MAILTO
+        and action.state is ActionState.NEEDS_USER
+        and record.evidence_code == "gmail_send_authorization_required"
+    )
     retry_available = (
         action.retry_count == 0
-        and record.evidence_code in RETRYABLE_EVIDENCE
-        and action.state in {ActionState.FAILED, ActionState.NEEDS_USER}
+        and (rfc_retry or mailto_retry)
     )
     return ActivityActionResponse(
         id=str(action.id),

@@ -68,3 +68,28 @@ def test_global_activity_api_returns_identity_latest_evidence_and_browser_sessio
         "browser_session_id": "browser-session-1",
     }
     assert datetime.fromisoformat(updated_at).tzinfo is not None
+
+
+def test_activity_retry_flag_requires_matching_method_state_and_evidence() -> None:
+    repository = activity_repository()
+    action = ActionRecord(
+        id=uuid4(),
+        plan_id=uuid4(),
+        candidate_id=uuid4(),
+        idempotency_key="activity-api-mismatched-retry",
+        method=UnsubscribeMethod.MAILTO,
+        state=ActionState.EXECUTING,
+        encrypted_payload=b"ciphertext",
+    )
+    repository.add(action)
+    repository.set_state(
+        action.id,
+        ActionState.FAILED,
+        evidence_code="http_503",
+        safe_detail="This evidence belongs only to the RFC executor.",
+    )
+    client, _ = local_client(create_app(event_repository=repository))
+
+    item = client.get("/api/actions").json()["items"][0]
+
+    assert item["retry_available"] is False
