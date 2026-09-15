@@ -133,16 +133,16 @@ def test_catalog() -> InMemoryCandidateCatalog:
     catalog.add(
         EvaluatedMessage(
             gmail_id="fixture-activity-rfc-1",
-            sender="Dispatch Lab <dispatch@dispatch-lab.example>",
+            sender="Dispatch Lab 1 <dispatch@dispatch-lab-1.example>",
             subject="Agent patterns weekly",
             sent_at=datetime(2026, 9, 7, 12, tzinfo=UTC),
-            list_id="dispatch-lab.example",
+            list_id="dispatch-lab-1.example",
             category=ClassificationCategory.MARKETING,
             confidence=0.91,
             methods=(
                 DiscoveredMethod(
                     method=UnsubscribeMethod.RFC8058,
-                    target="https://dispatch-lab.example/leave?token=private-fixture",
+                    target="https://dispatch-lab-1.example/leave?token=private-fixture",
                     source="header",
                 ),
             ),
@@ -153,17 +153,17 @@ def test_catalog() -> InMemoryCandidateCatalog:
     catalog.add(
         EvaluatedMessage(
             gmail_id="fixture-activity-mailto-1",
-            sender="Member Post <news@member-post.example>",
+            sender="Member Post 1 <news@member-post-1.example>",
             subject="Member digest",
             sent_at=datetime(2026, 9, 6, 12, tzinfo=UTC),
-            list_id="member-post.example",
+            list_id="member-post-1.example",
             category=ClassificationCategory.MARKETING,
             confidence=0.9,
             methods=(
                 DiscoveredMethod(
                     method=UnsubscribeMethod.MAILTO,
                     target=(
-                        "mailto:remove@member-post.example?subject=Unsubscribe"
+                        "mailto:remove@member-post-1.example?subject=Unsubscribe"
                         "&body=Please%20remove%20this%20address"
                     ),
                     source="header",
@@ -176,16 +176,16 @@ def test_catalog() -> InMemoryCandidateCatalog:
     catalog.add(
         EvaluatedMessage(
             gmail_id="fixture-activity-browser-1",
-            sender="Product Circle <hello@product-circle.example>",
+            sender="Product Circle 1 <hello@product-circle-1.example>",
             subject="Circle highlights",
             sent_at=datetime(2026, 9, 5, 12, tzinfo=UTC),
-            list_id="product-circle.example",
+            list_id="product-circle-1.example",
             category=ClassificationCategory.MARKETING,
             confidence=0.86,
             methods=(
                 DiscoveredMethod(
                     method=UnsubscribeMethod.BROWSER,
-                    target="https://product-circle.example/preferences?token=private-fixture",
+                    target="https://product-circle-1.example/preferences?token=private-fixture",
                     source="header-or-body",
                 ),
             ),
@@ -193,6 +193,80 @@ def test_catalog() -> InMemoryCandidateCatalog:
             evidence_quote="Circle highlights",
         )
     )
+    for sample_index in range(2, 6):
+        catalog.add(
+            EvaluatedMessage(
+                gmail_id=f"fixture-activity-rfc-{sample_index}",
+                sender=(
+                    f"Dispatch Lab {sample_index} <dispatch@dispatch-lab-{sample_index}.example>"
+                ),
+                subject="Agent patterns weekly",
+                sent_at=datetime(2026, 9, 7 - sample_index, 12, tzinfo=UTC),
+                list_id=f"dispatch-lab-{sample_index}.example",
+                category=ClassificationCategory.MARKETING,
+                confidence=0.91,
+                methods=(
+                    DiscoveredMethod(
+                        method=UnsubscribeMethod.RFC8058,
+                        target=(
+                            f"https://dispatch-lab-{sample_index}.example/leave"
+                            "?token=private-fixture"
+                        ),
+                        source="header",
+                    ),
+                ),
+                reason="Recurring product newsletter",
+                evidence_quote="Agent patterns weekly",
+            )
+        )
+        catalog.add(
+            EvaluatedMessage(
+                gmail_id=f"fixture-activity-mailto-{sample_index}",
+                sender=(f"Member Post {sample_index} <news@member-post-{sample_index}.example>"),
+                subject="Member digest",
+                sent_at=datetime(2026, 9, 7 - sample_index, 11, tzinfo=UTC),
+                list_id=f"member-post-{sample_index}.example",
+                category=ClassificationCategory.MARKETING,
+                confidence=0.9,
+                methods=(
+                    DiscoveredMethod(
+                        method=UnsubscribeMethod.MAILTO,
+                        target=(
+                            f"mailto:remove@member-post-{sample_index}.example"
+                            "?subject=Unsubscribe&body=Please%20remove%20this%20address"
+                        ),
+                        source="header",
+                    ),
+                ),
+                reason="Recurring membership digest",
+                evidence_quote="Member digest",
+            )
+        )
+        catalog.add(
+            EvaluatedMessage(
+                gmail_id=f"fixture-activity-browser-{sample_index}",
+                sender=(
+                    f"Product Circle {sample_index} <hello@product-circle-{sample_index}.example>"
+                ),
+                subject="Circle highlights",
+                sent_at=datetime(2026, 9, 7 - sample_index, 10, tzinfo=UTC),
+                list_id=f"product-circle-{sample_index}.example",
+                category=ClassificationCategory.MARKETING,
+                confidence=0.86,
+                methods=(
+                    DiscoveredMethod(
+                        method=UnsubscribeMethod.BROWSER,
+                        target=(
+                            f"https://product-circle-{sample_index}.example/preferences"
+                            "?token=private-fixture"
+                        ),
+                        source="header-or-body",
+                    ),
+                ),
+                reason="Recurring community marketing roundup",
+                evidence_quote="Circle highlights",
+            )
+        )
     return catalog
 
 
@@ -241,9 +315,7 @@ class FixtureOAuthProvider:
     def authorization_url(self, *, state: str, code_challenge: str, intent: OAuthIntent) -> str:
         return f"https://accounts.example.test/auth?state={state}&intent={intent.value}"
 
-    def exchange_code(
-        self, *, code: str, code_verifier: str, intent: OAuthIntent
-    ) -> OAuthToken:
+    def exchange_code(self, *, code: str, code_verifier: str, intent: OAuthIntent) -> OAuthToken:
         return OAuthToken(
             serialized_credentials="fixture-credentials",
             scopes=(
