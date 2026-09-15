@@ -59,9 +59,7 @@ class CandidateGrouper:
             members.sort(key=lambda item: item.sent_at)
             categories = {member.category for member in members}
             category = (
-                next(iter(categories))
-                if len(categories) == 1
-                else ClassificationCategory.UNCLEAR
+                next(iter(categories)) if len(categories) == 1 else ClassificationCategory.UNCLEAR
             )
             methods = [method for member in members for method in member.methods]
             method = min(methods, key=lambda item: METHOD_PRIORITY[item.method])

@@ -1,8 +1,10 @@
 import json
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.persistence.models import ScanCheckpointORM, utcnow
+from app.scan.service import ScanRequest
 
 
 class SqliteScanCheckpointStore:
@@ -16,6 +18,36 @@ class SqliteScanCheckpointStore:
             session.add(row)
             session.flush()
         return row
+
+    def remember_request(self, request: ScanRequest) -> None:
+        with self._session_factory.begin() as session:
+            row = self._get_or_create(session, request.scan_id)
+            row.days = request.days
+            row.max_messages = request.max_messages
+            row.updated_at = utcnow()
+
+    def incomplete_requests(self) -> tuple[ScanRequest, ...]:
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(ScanCheckpointORM)
+                .where(ScanCheckpointORM.completed == 0)
+                .order_by(ScanCheckpointORM.updated_at, ScanCheckpointORM.scan_id)
+            )
+            return tuple(
+                ScanRequest(
+                    scan_id=row.scan_id,
+                    days=row.days,
+                    max_messages=row.max_messages,
+                )
+                for row in rows
+            )
+
+    def seen_message_ids(self, scan_id: str) -> tuple[str, ...]:
+        with self._session_factory() as session:
+            row = session.get(ScanCheckpointORM, scan_id)
+            if row is None:
+                return ()
+            return tuple(json.loads(row.seen_message_ids_json))
 
     def page_token(self, scan_id: str) -> str | None:
         with self._session_factory() as session:

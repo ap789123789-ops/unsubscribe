@@ -19,20 +19,16 @@ def test_local_session_protects_mutations() -> None:
         ).status_code
         == 403
     )
-    assert (
-        client.post(
-            "/api/session/verify",
-            headers={
-                "Origin": "http://127.0.0.1:8000",
-                "X-CSRF-Token": csrf_token,
-            },
-        ).json()
-        == {"verified": True}
-    )
+    assert client.post(
+        "/api/session/verify",
+        headers={
+            "Origin": "http://127.0.0.1:8000",
+            "X-CSRF-Token": csrf_token,
+        },
+    ).json() == {"verified": True}
 
 
 def test_unexpected_host_is_rejected() -> None:
     client = TestClient(create_app())
 
     assert client.get("/api/health", headers={"Host": "attacker.example"}).status_code == 400
-

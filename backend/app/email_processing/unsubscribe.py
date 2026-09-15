@@ -28,8 +28,7 @@ class UnsubscribeDiscovery:
                 for target in https_targets
             )
         discovered.extend(
-            DiscoveredMethod(UnsubscribeMethod.MAILTO, target, "header")
-            for target in mail_targets
+            DiscoveredMethod(UnsubscribeMethod.MAILTO, target, "header") for target in mail_targets
         )
 
         header_web = https_targets if "list-unsubscribe=one-click" not in one_click else []

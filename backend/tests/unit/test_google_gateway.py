@@ -2,6 +2,8 @@ import base64
 import json
 from email import message_from_bytes
 
+import httpx
+
 from app.actions.planner import ExactMailDraft
 from app.gmail.google_gateway import (
     GoogleGmailGateway,
@@ -137,6 +139,26 @@ def test_oauth_provider_builds_loopback_pkce_url(tmp_path) -> None:
     )
     assert "gmail.readonly" in send_url
     assert "gmail.send" in send_url
+
+
+def test_oauth_provider_revokes_refresh_token_without_following_redirects(tmp_path) -> None:
+    requests: list[httpx.Request] = []
+
+    def revoke(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200)
+
+    provider = GoogleOAuthProvider(
+        client_secrets_file=tmp_path / "unused.json",
+        redirect_uri="http://127.0.0.1:8000/auth/google/callback",
+        revoke_transport=httpx.MockTransport(revoke),
+    )
+    serialized = json.dumps({"token": "access-secret", "refresh_token": "refresh-secret"})
+
+    assert provider.revoke(serialized) is True
+    assert len(requests) == 1
+    assert requests[0].url == "https://oauth2.googleapis.com/revoke"
+    assert requests[0].content == b"token=refresh-secret"
 
 
 async def test_google_gateway_sends_exact_message_and_reconciles_sent_mail() -> None:

@@ -32,4 +32,3 @@ class RuleEngine:
                     source="rule",
                 )
         return None
-

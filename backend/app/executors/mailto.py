@@ -13,9 +13,7 @@ class SendAuthorizationRequired(RuntimeError):
 class MailtoGmailGateway(Protocol):
     async def has_send_scope(self) -> bool: ...
 
-    async def send_mailto_unsubscribe(
-        self, draft: ExactMailDraft, message_id: str
-    ) -> str: ...
+    async def send_mailto_unsubscribe(self, draft: ExactMailDraft, message_id: str) -> str: ...
 
     async def find_sent_by_message_id(self, message_id: str) -> str | None: ...
 
@@ -45,10 +43,10 @@ class MailtoExecutor:
         message_id = deterministic_message_id(action_id)
         self._journal.persist_outbound_message_id(action_id, message_id)
         try:
-            external_id = await self._gmail.send_mailto_unsubscribe(payload.draft, message_id)
+            sent_id = await self._gmail.send_mailto_unsubscribe(payload.draft, message_id)
         except Exception:
-            external_id = await self._gmail.find_sent_by_message_id(message_id)
-            if external_id is None:
+            reconciled_id = await self._gmail.find_sent_by_message_id(message_id)
+            if reconciled_id is None:
                 return ExecutionResult(
                     state=ActionState.NEEDS_USER,
                     evidence_code="mail_send_uncertain",
@@ -58,11 +56,11 @@ class MailtoExecutor:
                 state=ActionState.SUBMITTED,
                 evidence_code="mail_reconciled_in_sent",
                 safe_detail="The unsubscribe email was found in Gmail Sent.",
-                external_id=external_id,
+                external_id=reconciled_id,
             )
         return ExecutionResult(
             state=ActionState.SUBMITTED,
             evidence_code="gmail_send_accepted",
             safe_detail="Gmail accepted the unsubscribe email; list processing is not verified.",
-            external_id=external_id,
+            external_id=sent_id,
         )

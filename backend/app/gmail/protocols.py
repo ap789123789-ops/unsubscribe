@@ -45,13 +45,13 @@ class CredentialStore(Protocol):
 
 
 class OAuthProvider(Protocol):
-    def authorization_url(
-        self, *, state: str, code_challenge: str, intent: OAuthIntent
-    ) -> str: ...
+    def authorization_url(self, *, state: str, code_challenge: str, intent: OAuthIntent) -> str: ...
 
     def exchange_code(
         self, *, code: str, code_verifier: str, intent: OAuthIntent
     ) -> OAuthToken: ...
+
+    def revoke(self, serialized_credentials: str) -> bool: ...
 
 
 class GmailGateway(Protocol):

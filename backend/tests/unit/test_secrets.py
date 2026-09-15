@@ -20,8 +20,9 @@ class FakeBackend:
         self.values.pop((service, username), None)
 
 
-def test_native_keyring_backend_can_store_and_delete() -> None:
-    store = KeyringCredentialStore(FakeBackend("macOS Keychain"))
+def test_explicitly_trusted_backend_can_store_and_delete(monkeypatch) -> None:
+    monkeypatch.setattr("app.security.secrets.SUPPORTED_BACKEND_TYPES", (FakeBackend,))
+    store = KeyringCredentialStore(FakeBackend("test double"))
 
     store.set("oauth", "refresh-token")
     assert store.get("oauth") == "refresh-token"
@@ -29,6 +30,7 @@ def test_native_keyring_backend_can_store_and_delete() -> None:
     assert store.get("oauth") is None
 
 
-def test_file_keyring_backend_fails_closed() -> None:
+@pytest.mark.parametrize("spoofed_name", ["macOS Keychain", "SecretService", "PlaintextKeyring"])
+def test_non_native_backend_fails_closed_even_if_its_name_looks_native(spoofed_name) -> None:
     with pytest.raises(InsecureCredentialBackend):
-        KeyringCredentialStore(FakeBackend("PlaintextKeyring"))
+        KeyringCredentialStore(FakeBackend(spoofed_name))

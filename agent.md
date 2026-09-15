@@ -1,157 +1,122 @@
 # Gmail Unsubscribe Agent
 
-## Project status
+## What this project does
 
-This repository is currently in the **planning/design phase**. The specifications are complete, but the `frontend/`, `backend/`, tests, and run scripts described below have not been implemented yet.
+This is a local-first Gmail subscription review and unsubscribe application. It connects to one
+real Gmail account, reads complete message bodies when needed, classifies mail as **marketing**,
+**non-marketing**, or **unclear** with deterministic rules plus OpenAI `gpt-5-mini`, and groups
+messages into subscription candidates.
 
-Do not claim the application runs until the implementation and credentialed smoke test exist and pass.
+The user reviews collapsible categories, selects nothing by default, sees exact destinations or
+`mailto:` content, and explicitly confirms an immutable action plan. Python then attempts RFC 8058,
+Gmail `mailto:`, or a visible isolated Playwright flow. The model can classify and explain; it has
+no unsubscribe, browser, mail-send, approval, filesystem, or arbitrary Gmail tools.
 
-## What it does
+Statuses are intentionally honest: **submitted** means a request left the app, **confirmed** needs
+explicit browser-page acceptance evidence, **needs_user** means automation paused, and **failed**
+means no accepted submission was established.
 
-This is a local-first, open-source application for reviewing and unsubscribing from Gmail mailing lists.
+## Current status
 
-The V1 flow is:
-
-1. Connect one real Gmail account using OAuth.
-2. Scan a bounded set of messages (default: 30 days, maximum: 500).
-3. Read and normalize complete email content when needed.
-4. Classify each message as **marketing**, **non-marketing**, or **unclear** using deterministic rules and OpenAI `gpt-5-mini`.
-5. Group messages into subscription candidates.
-6. Let the user review collapsible categories, inspect evidence, correct results, and select candidates. Nothing is selected by default.
-7. Show an immutable action plan for explicit confirmation.
-8. Attempt unsubscribe through RFC 8058 HTTPS POST, `mailto:`, or a visible isolated Playwright browser.
-9. Report **submitted**, **confirmed**, **needs_user**, or **failed** without treating transport success as proof of completion.
-
-The model classifies and explains only. It cannot browse, send mail, unsubscribe, access the filesystem, or approve actions.
+The eight planned V1 implementation slices are present, with automated unit, API, integration,
+agent-eval, component, E2E, security, and accessibility gates. This is not a credential-free demo.
+V1 acceptance still requires `make smoke-real-read` with a dedicated Gmail account and OpenAI key.
+The separate destructive `make smoke-real` gate requires controlled unsubscribe fixtures, followed
+by the documented manual assistive-technology/security checklist.
 
 ## Tech stack
 
-### Frontend
+- Frontend: React 19, Vite, TypeScript, generated OpenAPI client, Vitest, Testing Library, Playwright.
+- Backend: Python 3.12/3.13, FastAPI, Pydantic, SQLAlchemy, Alembic, SQLite, `uv`.
+- Agent: OpenAI Agents SDK using `gpt-5-mini`, strict structured output, one bounded read-only tool.
+- Integrations: Gmail API OAuth; Python Playwright Chromium; macOS Keychain/Linux Secret Service.
 
-- React, Vite, and TypeScript
-- Generated TypeScript client from FastAPI OpenAPI
-- Vitest and Testing Library for component tests
-- Playwright Test for cross-stack E2E tests
+FastAPI owns all domain logic and serves the built frontend from loopback in the production-shaped
+local flow. React never receives Gmail OAuth tokens, raw signed unsubscribe targets, or full bodies.
 
-### Backend
+## Setup and run
 
-- Python 3.12 and `uv`
-- FastAPI and Pydantic
-- SQLAlchemy 2, Alembic, and SQLite
-- OpenAI Agents SDK with `gpt-5-mini`
-- Google Gmail API Python client
-- Python `keyring` using macOS Keychain or Linux Secret Service
-- Playwright Python with headed, isolated Chromium
-- pytest for unit, API, integration, and agent-eval tests
-
-### Runtime shape
-
-The frontend is a static presentation tier. FastAPI owns domain logic, Gmail access, classification, persistence, and unsubscribe execution. In production, FastAPI serves the compiled Vite assets from `127.0.0.1`, so the app uses one long-running process and a same-origin UI/API boundary.
-
-## How to run it
-
-### Today
-
-There is no runnable application yet. Review the planning set under `docs/`, starting with:
-
-- `docs/01-v1-project-plan.md`
-- `docs/06-detailed-technical-design.md`
-- `docs/07-frontend-experience-spec.md`
-- `docs/superpowers/plans/2026-09-14-gmail-unsubscribe-agent-v1.md`
-
-### Planned development workflow
-
-The first implementation task will add the actual setup commands and `Makefile`. The intended workflow is:
+Prerequisites: `uv`, Node.js 22+ with npm, Chromium support, an OpenAI API key, and a Google OAuth
+desktop client with Gmail API enabled and loopback callback `http://127.0.0.1:8000/auth/google/callback`.
 
 ```bash
-# Install backend dependencies
-cd backend
-uv sync
-
-# Install frontend dependencies
-cd ../frontend
-npm install
-
-# Install Playwright Chromium
-uv run playwright install chromium
-
-# Start FastAPI and the Vite development server
-# Exact commands will be documented when Task 1 is implemented.
+cp .env.example .env
+# Set OPENAI_API_KEY and APP_GOOGLE_CLIENT_SECRETS_FILE in .env.
+make setup
+cd backend && uv run playwright install chromium && cd ..
+npm --prefix frontend exec playwright install chromium
+make build
+make dev-backend
 ```
 
-Required product credentials will include:
+Open `http://127.0.0.1:8000`, connect Gmail, scan a bounded range, and review the results. OAuth
+starts with `gmail.readonly`; `gmail.send` is requested only when a selected action needs `mailto:`.
 
-- a Google OAuth desktop client configured for the loopback callback;
-- an OpenAI API key;
-- a dedicated Gmail account for safe release testing.
+Development servers can be split with `make dev-backend` and `make dev-frontend`. Common checks:
 
-OAuth begins with `gmail.readonly`. The app requests `gmail.send` only when the user explicitly chooses a `mailto:` unsubscribe action.
+```bash
+make openapi     # regenerate the checked API contract/client after backend route changes
+make lint
+make typecheck
+make test
+make verify      # complete automated release gate, including cross-stack Playwright
+```
 
-Do not add a credential-free product demo. Synthetic Gmail/OpenAI adapters are for automated tests only.
+`make smoke-real-read` safely retrieves and classifies one real message without unsubscribing.
+`make smoke-real` is destructive: it submits controlled real requests and requires the explicit
+acknowledgement and fixture variables documented in `README.md`.
 
-## Planned folder structure
+## Folder structure
 
 ```text
-frontend/
-  src/api/generated/       # generated from FastAPI OpenAPI; never hand-edit
-  src/app/                 # routing and application shell
-  src/features/            # setup, scan, review, confirmation, activity
-  src/styles/              # tokens and global styles
-  tests/components/
-  tests/e2e/
 backend/
-  app/api/                 # thin FastAPI transport layer
-  app/domain/              # models and action state machine
-  app/persistence/         # SQLAlchemy repositories and migrations
-  app/gmail/               # OAuth, message retrieval, send/reconciliation
-  app/email_processing/    # MIME normalization and unsubscribe discovery
-  app/classification/      # deterministic rules and bounded agent
-  app/candidates/          # grouping and candidate revisions
+  app/api/                 # FastAPI routes, local session/CSRF, SSE activity
+  app/domain/              # Pydantic records and action state machine
+  app/persistence/         # SQLAlchemy repositories and startup migrations
+  app/gmail/               # OAuth, complete-message reads, send/reconciliation
+  app/email_processing/    # hostile MIME normalization and unsubscribe discovery
+  app/classification/      # rules, bounded classifier agent, output validation
+  app/candidates/          # grouping and user-correction revisions
   app/actions/             # immutable plans and execution coordination
-  app/executors/           # RFC 8058, mailto, and browser methods
-  app/security/            # secrets, URL policy, encryption, CSRF
-  tests/                   # unit, API, integration, and eval suites
-  alembic/
-scripts/                   # OpenAPI generation and project utilities
-docs/                      # product, architecture, UX, security, and plans
-Makefile                   # planned common development commands
+  app/executors/           # RFC 8058, mailto, guarded visible browser
+  app/security/            # credential store, URL policy, encrypted payloads
+  app/scan/                # bounded reads and durable checkpoints
+  app/recovery.py          # restart reconciliation before readiness
+  tests/                   # unit, API, integration, eval, and E2E fixture app
+  alembic/                 # versioned SQLite migrations
+frontend/
+  src/api/generated/       # generated from FastAPI; never hand-edit
+  src/features/            # setup, scan, review, confirmation, activity, settings
+  tests/components/        # React behavior tests
+  tests/e2e/               # real React–FastAPI browser flows
+scripts/                   # OpenAPI drift check and explicit real smoke gate
+docs/                      # product, architecture, UX, risk, and implementation plans
+.github/workflows/ci.yml   # locked, least-privilege automated gate
 ```
 
-## Important implementation rules
+## Implementation rules
 
-- Fetch real Gmail messages for product acceptance; fixtures do not satisfy V1 success.
-- Keep full email bodies in memory by default. Never persist or log bodies, OAuth tokens, signed URLs, cookies, or model payloads.
-- Treat email text, model output, and sender websites as untrusted input.
-- Keep side effects in deterministic Python services behind typed protocols.
-- Require a current immutable plan digest and explicit user confirmation before execution.
-- Never automatically repeat a possibly issued POST, email send, or final browser click.
-- RFC 8058 and `mailto:` remain **submitted** in V1. Only explicit, validated browser-page evidence may become **confirmed**.
-- Bind FastAPI to loopback and enforce Host, Origin, session, and CSRF checks on mutations.
-- Test the real React–FastAPI–SQLite path; fake only third-party boundaries in CI.
-- Follow red-green-refactor and commit each vertical task independently.
+- Product acceptance always uses real Gmail and complete body retrieval; test fakes never count.
+- Keep bodies in memory by default. Never log/persist bodies, tokens, cookies, model payloads, or
+  signed query strings.
+- Treat email, model output, and sender sites as hostile. Keep side effects in typed Python services.
+- Require the current plan digest and explicit user confirmation before any side effect.
+- Never automatically repeat a possibly issued POST, email, or final browser click.
+- Bind loopback, enforce Host/Origin/session/CSRF, and retain browser network guards during takeover.
+- Test the real React–FastAPI path; fake only Google, OpenAI, DNS/time, and sender-owned boundaries.
+- Use red → green at public seams, update OpenAPI artifacts, and run `make verify` before claiming done.
 
-## What is coming next
+## What comes next
 
-Implementation follows the eight tasks in the V1 implementation plan:
+After the real credentialed/manual V1 release gate passes, the next decisions are:
 
-1. Create the React/Vite and FastAPI shell plus generated OpenAPI client.
-2. Add loopback security, configuration, SQLite persistence, and the action state machine.
-3. Implement real Gmail OAuth, bounded scanning, complete-message retrieval, and resume.
-4. Add MIME normalization, unsubscribe discovery, grouping, classifier agent, and evals.
-5. Build the accessible review and confirmation experience.
-6. Implement safe RFC 8058 and `mailto:` executors.
-7. Add visible isolated Playwright execution and user takeover.
-8. Add recovery, CI, documentation, accessibility/security checks, and the real credentialed release gate.
-
-Two product decisions remain open: metadata/history retention defaults and the final macOS/Linux packaging approach.
+1. Choose metadata/history retention and delete-data defaults.
+2. Choose macOS/Linux packaging and signed distribution.
+3. Add more model/provider options only after the `gpt-5-mini` baseline is measured.
+4. Consider other mail providers after Gmail V1 reliability and safety evidence is established.
 
 ## Source of truth
 
-When documents disagree, use this order:
-
-1. `docs/06-detailed-technical-design.md`
-2. `docs/07-frontend-experience-spec.md`
-3. `docs/01-v1-project-plan.md`
-4. `docs/superpowers/plans/2026-09-14-gmail-unsubscribe-agent-v1.md`
-
-Update the relevant design document before intentionally changing a confirmed architectural or safety decision.
+When documents disagree: `docs/06-detailed-technical-design.md`, then
+`docs/07-frontend-experience-spec.md`, then `docs/01-v1-project-plan.md`, then the implementation
+plan. Update the relevant design document before intentionally changing a confirmed safety decision.

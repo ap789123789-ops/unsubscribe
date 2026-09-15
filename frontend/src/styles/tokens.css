@@ -121,3 +121,10 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+@media (forced-colors: active) {
+  button, a, input, select, .candidate, .activity-row, .evidence-dialog {
+    border-color: ButtonText;
+  }
+  :focus-visible { outline-color: Highlight; }
+}

@@ -147,4 +147,3 @@ class EmailNormalizer:
             + "\n[content truncated]\n"
             + text[-4_000:]
         )
-

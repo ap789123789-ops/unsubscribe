@@ -7,7 +7,11 @@ from urllib.parse import urlsplit
 import pytest
 
 from app.domain.state_machine import ActionState
-from app.executors.browser import BrowserExecutor, BrowserSessionRegistry
+from app.executors.browser import (
+    BrowserExecutor,
+    BrowserSessionRegistry,
+    chromium_pinning_args,
+)
 from app.executors.browser_policy import BrowserOutcomePolicy
 from app.executors.models import BrowserPayload
 from app.security.url_policy import ValidatedTarget
@@ -44,7 +48,20 @@ def web_target(url: str) -> ValidatedTarget:
         url=url,
         origin=f"{parsed.scheme}://{parsed.netloc}",
         hostname=parsed.hostname or "fixture.local",
-        addresses=("93.184.216.34",),
+        addresses=(parsed.hostname or "127.0.0.1",),
+    )
+
+
+def test_browser_pins_chromium_to_the_final_validated_address() -> None:
+    target = ValidatedTarget(
+        url="https://mail.example/unsubscribe",
+        origin="https://mail.example",
+        hostname="mail.example",
+        addresses=("93.184.216.34", "93.184.216.35"),
+    )
+
+    assert chromium_pinning_args(target)[-1] == (
+        "--host-resolver-rules=MAP mail.example 93.184.216.34, EXCLUDE localhost"
     )
 
 
@@ -179,9 +196,7 @@ async def test_browser_pauses_for_ambiguous_controls(tmp_path: Path) -> None:
         navigation_timeout_ms=5_000,
     )
 
-    result = await executor.execute(
-        "action-ambiguous", BrowserPayload(fixture_target(ambiguous))
-    )
+    result = await executor.execute("action-ambiguous", BrowserPayload(fixture_target(ambiguous)))
 
     assert result.state is ActionState.NEEDS_USER
     assert result.evidence_code == "ambiguous_unsubscribe_choice"
@@ -193,7 +208,7 @@ async def test_browser_pauses_for_ambiguous_controls(tmp_path: Path) -> None:
     ("markup", "expected_code"),
     [
         (
-            '<button onclick="window.open(\'https://example.com/unsubscribe\')">'
+            "<button onclick=\"window.open('https://example.com/unsubscribe')\">"
             "Unsubscribe</button>",
             "popup_requires_review",
         ),
@@ -269,9 +284,7 @@ async def test_browser_retains_uncertain_session_after_final_click_disconnect(
         navigation_timeout_ms=5_000,
     )
 
-    result = await executor.execute(
-        "action-disconnect", BrowserPayload(fixture_target(fixture))
-    )
+    result = await executor.execute("action-disconnect", BrowserPayload(fixture_target(fixture)))
 
     assert result.state is ActionState.NEEDS_USER
     assert result.evidence_code == "final_navigation_failed"
@@ -317,6 +330,12 @@ def service_worker_fixture() -> tuple[str, list[str]]:
             if self.path == "/sw.js":
                 body = b"self.addEventListener('fetch', () => {});"
                 content_type = "text/javascript"
+            elif self.path == "/pin":
+                body = (
+                    b'<button onclick="document.body.textContent='
+                    b"'You have been unsubscribed'\">Unsubscribe</button>"
+                )
+                content_type = "text/html"
             else:
                 body = b"""<!doctype html><html><body><main>
                     <output id="worker-state">pending</output>
@@ -347,6 +366,36 @@ def service_worker_fixture() -> tuple[str, list[str]]:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+async def test_browser_connects_to_the_pinned_ip_without_system_dns(
+    tmp_path: Path, service_worker_fixture: tuple[str, list[str]]
+) -> None:
+    fixture_url, requests = service_worker_fixture
+    port = urlsplit(fixture_url).port
+
+    class PublicFixturePolicy(FixtureNetworkPolicy):
+        async def allow_browser_request(self, target: str) -> bool:
+            self.checked.append(target)
+            return True
+
+    target = ValidatedTarget(
+        url=f"http://pinning.invalid:{port}/pin",
+        origin=f"http://pinning.invalid:{port}",
+        hostname="pinning.invalid",
+        addresses=("127.0.0.1",),
+    )
+    executor = BrowserExecutor(
+        policy=PublicFixturePolicy(),
+        registry=BrowserSessionRegistry(profile_root=tmp_path / "profiles"),
+        headless=True,
+        navigation_timeout_ms=5_000,
+    )
+
+    result = await executor.execute("action-pinned", BrowserPayload(target))
+
+    assert result.state is ActionState.CONFIRMED
+    assert requests == ["/pin"]
 
 
 async def test_browser_blocks_service_worker_registration(

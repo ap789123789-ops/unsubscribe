@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -13,6 +14,16 @@ from app.persistence.models import (
     SubscriptionCandidateORM,
     UnsubscribeActionORM,
 )
+
+
+@dataclass(frozen=True)
+class ActionEventRecord:
+    id: str
+    action_id: str
+    state: ActionState
+    evidence_code: str | None
+    safe_detail: str | None
+    created_at: datetime
 
 
 class ActionRepository:
@@ -87,6 +98,62 @@ class ActionRepository:
         with self._session_factory() as session:
             return self._list_for_plan(session, str(plan_id))
 
+    def list_by_state(self, state: ActionState) -> tuple[ActionRecord, ...]:
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(UnsubscribeActionORM)
+                .where(UnsubscribeActionORM.state == state.value)
+                .order_by(UnsubscribeActionORM.created_at, UnsubscribeActionORM.id)
+            )
+            return tuple(self._from_row(row) for row in rows)
+
+    def list_events(
+        self,
+        plan_id: UUID | str,
+        *,
+        after_event_id: str | None = None,
+    ) -> tuple[ActionEventRecord, ...]:
+        with self._session_factory() as session:
+            statement = (
+                select(ActionEventORM)
+                .join(
+                    UnsubscribeActionORM,
+                    UnsubscribeActionORM.id == ActionEventORM.action_id,
+                )
+                .where(UnsubscribeActionORM.plan_id == str(plan_id))
+            )
+            if after_event_id is not None:
+                try:
+                    anchor_sequence = int(after_event_id)
+                except ValueError as error:
+                    raise KeyError(after_event_id) from error
+                anchor = session.scalar(
+                    select(ActionEventORM)
+                    .join(
+                        UnsubscribeActionORM,
+                        UnsubscribeActionORM.id == ActionEventORM.action_id,
+                    )
+                    .where(
+                        ActionEventORM.stream_sequence == anchor_sequence,
+                        UnsubscribeActionORM.plan_id == str(plan_id),
+                    )
+                )
+                if anchor is None:
+                    raise KeyError(after_event_id)
+                statement = statement.where(ActionEventORM.stream_sequence > anchor.stream_sequence)
+            rows = session.scalars(statement.order_by(ActionEventORM.stream_sequence))
+            return tuple(
+                ActionEventRecord(
+                    id=str(row.stream_sequence),
+                    action_id=row.action_id,
+                    state=ActionState(row.to_state),
+                    evidence_code=row.evidence_code,
+                    safe_detail=row.safe_detail,
+                    created_at=_as_utc(row.created_at),
+                )
+                for row in rows
+            )
+
     def set_state(
         self,
         action_id: UUID | str,
@@ -140,6 +207,15 @@ class ActionRepository:
             if row is None:
                 return None
             return self._from_row(row)
+
+    def get_by_idempotency_key(self, idempotency_key: str) -> ActionRecord | None:
+        with self._session_factory() as session:
+            row = session.scalar(
+                select(UnsubscribeActionORM).where(
+                    UnsubscribeActionORM.idempotency_key == idempotency_key
+                )
+            )
+            return self._from_row(row) if row is not None else None
 
     @staticmethod
     def _to_row(action: ActionRecord) -> UnsubscribeActionORM:

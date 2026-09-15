@@ -9,6 +9,7 @@ from agents import (
     ToolExecutionConfig,
     function_tool,
 )
+from agents.models.openai_provider import OpenAIProvider
 
 from app.classification.models import ClassificationOutput
 from app.email_processing.normalizer import NormalizedEmail
@@ -36,9 +37,11 @@ class OpenAIAgentsClassifier:
         related_samples: Callable[[str, int], list[str]] | None = None,
         *,
         model: str = "gpt-5-mini",
+        api_key: str | None = None,
     ) -> None:
         self._related_samples = related_samples or (lambda _message_id, _limit: [])
         self._model = model
+        self._model_provider = OpenAIProvider(api_key=api_key) if api_key else None
 
     async def classify(self, email: NormalizedEmail) -> ClassificationOutput:
         calls = 0
@@ -68,6 +71,13 @@ class OpenAIAgentsClassifier:
             "auto_submitted": email.headers.get("auto-submitted"),
             "sanitized_body": email.model_text,
         }
+        run_config = RunConfig(
+            tracing_disabled=True,
+            trace_include_sensitive_data=False,
+            tool_execution=ToolExecutionConfig(max_function_tool_concurrency=1),
+        )
+        if self._model_provider is not None:
+            run_config.model_provider = self._model_provider
         last_error: Exception | None = None
         for _ in range(2):
             try:
@@ -77,11 +87,7 @@ class OpenAIAgentsClassifier:
                     + json.dumps(payload, ensure_ascii=False)
                     + "\n</untrusted_email>",
                     max_turns=2,
-                    run_config=RunConfig(
-                        tracing_disabled=True,
-                        trace_include_sensitive_data=False,
-                        tool_execution=ToolExecutionConfig(max_function_tool_concurrency=1),
-                    ),
+                    run_config=run_config,
                 )
                 if isinstance(result.final_output, ClassificationOutput):
                     return result.final_output
@@ -90,4 +96,3 @@ class OpenAIAgentsClassifier:
                 last_error = error
         assert last_error is not None
         raise last_error
-

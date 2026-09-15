@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import select
 
-from app.actions.coordinator import ExecutionCoordinator
+from app.actions.coordinator import ActionAlreadyAttempted, ExecutionCoordinator
 from app.actions.planner import ActionPlanService, PlanSelection
 from app.candidates.grouper import EvaluatedMessage
 from app.domain.models import ClassificationCategory, UnsubscribeMethod
@@ -108,3 +109,29 @@ async def test_confirm_is_durable_encrypted_and_duplicate_safe(tmp_path) -> None
         assert row is not None
         assert b"secret=one" not in row.encrypted_payload
         assert len(session.scalars(select(ActionEventORM)).all()) == 3
+
+
+async def test_fresh_equivalent_plan_cannot_repeat_an_existing_action(tmp_path) -> None:
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'semantic-idempotency.sqlite3'}")
+    initialize_database(engine)
+    sessions = create_session_factory(engine)
+    repository = ActionRepository(sessions)
+    catalog = candidate_catalog()
+    plans = ActionPlanService(catalog, url_policy=AcceptingPolicy())
+    candidate = catalog.candidates()[0]
+    first_plan = await plans.create([PlanSelection(candidate.id, candidate.revision)])
+    second_plan = await plans.create([PlanSelection(candidate.id, candidate.revision)])
+    rfc = CountingRfc()
+    coordinator = ExecutionCoordinator(
+        plans=plans,
+        repository=repository,
+        cipher=PayloadCipher(b"a" * 32),
+        rfc8058=rfc,
+        mailto=MailtoExecutor(gmail=AuthorizedGmail(), journal=repository),
+    )
+
+    await coordinator.confirm_and_execute(first_plan.id, first_plan.digest)
+    with pytest.raises(ActionAlreadyAttempted):
+        await coordinator.confirm_and_execute(second_plan.id, second_plan.digest)
+
+    assert rfc.calls == 1

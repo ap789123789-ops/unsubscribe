@@ -7,6 +7,7 @@ from email.policy import SMTP
 from pathlib import Path
 from typing import Any
 
+import httpx
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -26,9 +27,16 @@ GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 
 
 class GoogleOAuthProvider:
-    def __init__(self, *, client_secrets_file: Path, redirect_uri: str) -> None:
+    def __init__(
+        self,
+        *,
+        client_secrets_file: Path,
+        redirect_uri: str,
+        revoke_transport: httpx.BaseTransport | None = None,
+    ) -> None:
         self._client_secrets_file = client_secrets_file
         self._redirect_uri = redirect_uri
+        self._revoke_transport = revoke_transport
 
     def _flow(
         self,
@@ -78,6 +86,27 @@ class GoogleOAuthProvider:
             serialized_credentials=credentials.to_json(),
             scopes=tuple(credentials.scopes or (GMAIL_READONLY_SCOPE,)),
         )
+
+    def revoke(self, serialized_credentials: str) -> bool:
+        try:
+            credential_data = json.loads(serialized_credentials)
+        except json.JSONDecodeError:
+            return False
+        token = credential_data.get("refresh_token") or credential_data.get("token")
+        if not isinstance(token, str) or not token:
+            return False
+        with httpx.Client(
+            transport=self._revoke_transport,
+            timeout=5.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            response = client.post(
+                "https://oauth2.googleapis.com/revoke",
+                data={"token": token},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        return response.status_code == 200
 
 
 class GoogleGmailGateway:
@@ -170,13 +199,7 @@ class GoogleGmailGateway:
         raw = base64.urlsafe_b64encode(message.as_bytes(policy=SMTP)).decode("ascii")
 
         def request() -> dict[str, Any]:
-            return (
-                self._client()
-                .users()
-                .messages()
-                .send(userId="me", body={"raw": raw})
-                .execute()
-            )
+            return self._client().users().messages().send(userId="me", body={"raw": raw}).execute()
 
         response = await asyncio.to_thread(request)
         return str(response["id"])

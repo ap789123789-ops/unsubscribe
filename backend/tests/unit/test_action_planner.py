@@ -76,9 +76,7 @@ async def test_mailto_plan_rejects_ambiguous_or_injected_draft(target: str) -> N
     candidate = catalog.candidates()[0]
 
     with pytest.raises(ValueError):
-        await ActionPlanService(catalog).create(
-            [PlanSelection(candidate.id, candidate.revision)]
-        )
+        await ActionPlanService(catalog).create([PlanSelection(candidate.id, candidate.revision)])
 
 
 def test_payload_cipher_uses_unique_nonces_and_action_bound_aad() -> None:

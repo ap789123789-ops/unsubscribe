@@ -3,7 +3,11 @@ from collections.abc import Awaitable, Callable
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.actions.coordinator import ExecutionCoordinator, ExecutionUnavailable
+from app.actions.coordinator import (
+    ActionAlreadyAttempted,
+    ExecutionCoordinator,
+    ExecutionUnavailable,
+)
 from app.actions.planner import (
     ActionPlan,
     ActionPlanService,
@@ -167,6 +171,11 @@ def create_action_plan_router(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "stale_plan", "message": str(error)},
+            ) from error
+        except ActionAlreadyAttempted as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "action_already_attempted", "message": str(error)},
             ) from error
         except SendAuthorizationRequired as error:
             raise HTTPException(

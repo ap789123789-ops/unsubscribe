@@ -1,11 +1,16 @@
 ---
 title: Gmail Unsubscribe Agent — V1 Project Plan
-status: proposed
+status: implemented-awaiting-credentialed-release
 last_updated: 2026-09-14
 owners: maintainers
 ---
 
 # V1 project plan
+
+> Implementation status (2026-09-14): all eight code slices and the non-credentialed automated
+> gate are implemented. V1 is not release-certified until `make smoke-real-read` succeeds with a
+> dedicated Gmail account/OpenAI key, the controlled destructive executor gate succeeds, and the
+> manual accessibility/security checklist is completed.
 
 ## Outcome
 
@@ -110,8 +115,8 @@ Detailed dependency order is in [02-feature-sequencing.md](./02-feature-sequenci
 - Contract: generated OpenAPI TypeScript client, Gmail gateway, `gpt-5-mini` Pydantic output, executor results, and database migrations.
 - Eval: privacy-safe labeled corpus with per-class precision/recall, abstention quality, grouping accuracy, and unsafe-action rate.
 - Integration: fake Gmail and hostile unsubscribe servers; RFC, `mailto:`, redirects, timeouts, crashes, duplicate confirmation, and recovery.
-- UI/E2E: real OAuth smoke test against a dedicated Gmail account plus automated selection, collapse, takeover, retry, error, keyboard, and screen-reader flows.
-- Release: clean macOS/Linux setup, no secrets or message bodies in logs/repo, license/dependency checks, and a successful real-email scan-to-action exercise.
+- UI/E2E: automated real React–FastAPI selection, collapse, takeover, focus, hostile-text, Host/CSRF, and axe flows; credentialed OAuth is deliberately excluded from CI.
+- Release: `make verify` must pass first. Then run safe `make smoke-real-read`, the separately acknowledged controlled executor smoke, a clean setup exercise, assistive-technology checks, and sensitive-data inspection.
 
 ## Remaining design questions
 

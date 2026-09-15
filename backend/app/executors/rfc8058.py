@@ -1,5 +1,7 @@
+import ipaddress
 from dataclasses import dataclass
 from typing import Protocol
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -15,6 +17,10 @@ class ResponseTooLarge(RuntimeError):
     pass
 
 
+class PinnedPeerMismatch(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class HttpResponse:
     status_code: int
@@ -27,6 +33,8 @@ class RfcTransport(Protocol):
         self,
         *,
         url: str,
+        connect_ip: str,
+        server_hostname: str,
         body: bytes,
         headers: dict[str, str],
         follow_redirects: bool,
@@ -41,19 +49,42 @@ class HttpxRfcTransport:
         self,
         *,
         url: str,
+        connect_ip: str,
+        server_hostname: str,
         body: bytes,
         headers: dict[str, str],
         follow_redirects: bool,
     ) -> HttpResponse:
         timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            follow_redirects=follow_redirects,
-            trust_env=False,
-            transport=self._transport,
-        ) as client, client.stream(
-            "POST", url, content=body, headers=headers
-        ) as response:
+        parsed = urlsplit(url)
+        pinned_host = f"[{connect_ip}]" if ":" in connect_ip else connect_ip
+        pinned_url = urlunsplit((parsed.scheme, pinned_host, parsed.path, parsed.query, ""))
+        request_headers = {**headers, "Host": server_hostname}
+        async with (
+            httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=follow_redirects,
+                trust_env=False,
+                transport=self._transport,
+            ) as client,
+            client.stream(
+                "POST",
+                pinned_url,
+                content=body,
+                headers=request_headers,
+                extensions={"sni_hostname": server_hostname},
+            ) as response,
+        ):
+            if self._transport is None:
+                stream = response.extensions.get("network_stream")
+                peer = stream.get_extra_info("server_addr") if stream is not None else None
+                if (
+                    not isinstance(peer, tuple)
+                    or not peer
+                    or ipaddress.ip_address(str(peer[0]).split("%", 1)[0])
+                    != ipaddress.ip_address(connect_ip)
+                ):
+                    raise PinnedPeerMismatch("The connected peer did not match the pinned address")
             chunks: list[bytes] = []
             size = 0
             async for chunk in response.aiter_bytes():
@@ -85,11 +116,13 @@ class Rfc8058Executor:
         try:
             response = await self._transport.post(
                 url=target.url,
+                connect_ip=target.addresses[0],
+                server_hostname=target.hostname,
                 body=RFC8058_BODY,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 follow_redirects=False,
             )
-        except (httpx.RequestError, ResponseTooLarge, TimeoutError):
+        except (httpx.RequestError, PinnedPeerMismatch, ResponseTooLarge, TimeoutError):
             return ExecutionResult(
                 state=ActionState.NEEDS_USER,
                 evidence_code="submission_uncertain",

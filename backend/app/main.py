@@ -1,6 +1,10 @@
+from collections.abc import Callable
+from contextlib import asynccontextmanager
+from datetime import timedelta
+from functools import partial
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -12,7 +16,8 @@ from app.api.action_plans import create_action_plan_router
 from app.api.auth import create_auth_router
 from app.api.browser_sessions import create_browser_session_router
 from app.api.candidates import create_candidate_router
-from app.api.health import router as health_router
+from app.api.events import create_event_router
+from app.api.health import Readiness, create_health_router
 from app.api.scans import create_scan_router
 from app.api.security import SessionRegistry, create_local_security
 from app.classification.openai_agent import OpenAIAgentsClassifier
@@ -25,10 +30,11 @@ from app.gmail.oauth import OAuthCoordinator
 from app.persistence.database import (
     create_database_engine,
     create_session_factory,
-    initialize_database,
+    run_migrations,
 )
 from app.persistence.repositories import ActionRepository
 from app.pipeline import InMemoryCandidateCatalog, ProcessingPipeline
+from app.recovery import RecoveryService, StartupRecovery
 from app.scan.checkpoints import SqliteScanCheckpointStore
 from app.scan.service import ScanService
 from app.security.payload_crypto import PayloadCipher, PayloadKeyUnavailable
@@ -38,6 +44,20 @@ from app.security.url_policy import UrlSafetyPolicy
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = REPOSITORY_ROOT / "frontend" / "dist"
 RESERVED_PREFIXES = ("api", "auth", "events")
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "base-uri 'none'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+        "script-src 'self'",
+        "style-src 'self'",
+        "font-src 'self'",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+    )
+)
 
 
 def create_app(
@@ -49,6 +69,9 @@ def create_app(
     action_plan_service: ActionPlanService | None = None,
     execution_coordinator: ExecutionCoordinator | None = None,
     browser_session_service: BrowserSessionService | None = None,
+    event_repository: ActionRepository | None = None,
+    startup_migrator: Callable[[], None] | None = None,
+    recovery_service: StartupRecovery | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     catalog_was_injected = candidate_catalog is not None
@@ -72,31 +95,35 @@ def create_app(
         except InsecureCredentialBackend:
             oauth_coordinator = None
             credential_store = None
-    session_factory = None
-    if credential_store is not None:
-        engine = create_database_engine(settings.database_url)
-        initialize_database(engine)
-        session_factory = create_session_factory(engine)
+    engine = create_database_engine(settings.database_url)
+    session_factory = create_session_factory(engine)
+    startup_migrator = startup_migrator or partial(run_migrations, settings.database_url)
+    action_repository = ActionRepository(session_factory)
+    event_repository = event_repository or action_repository
+    scan_checkpoints: SqliteScanCheckpointStore | None = None
+    browser_registry = BrowserSessionRegistry(settings.browser_profile_root)
+    browser_executor: BrowserExecutor | None = None
     gmail_gateway = (
-        StoredCredentialGmailGateway(credential_store)
-        if credential_store is not None
-        else None
+        StoredCredentialGmailGateway(credential_store) if credential_store is not None else None
     )
-    if scan_service is None and gmail_gateway is not None and session_factory is not None:
+    if scan_service is None and gmail_gateway is not None:
+        scan_checkpoints = SqliteScanCheckpointStore(session_factory)
         scan_service = ScanService(
             gmail_gateway,
-            SqliteScanCheckpointStore(session_factory),
-            ProcessingPipeline(OpenAIAgentsClassifier(), candidate_catalog),
+            scan_checkpoints,
+            ProcessingPipeline(
+                OpenAIAgentsClassifier(
+                    api_key=(
+                        settings.openai_api_key.get_secret_value()
+                        if settings.openai_api_key is not None
+                        else None
+                    )
+                ),
+                candidate_catalog,
+            ),
         )
-    if (
-        execution_coordinator is None
-        and credential_store is not None
-        and gmail_gateway is not None
-        and session_factory is not None
-    ):
+    if execution_coordinator is None and credential_store is not None and gmail_gateway is not None:
         try:
-            repository = ActionRepository(session_factory)
-            browser_registry = BrowserSessionRegistry(settings.browser_profile_root)
             browser_executor = BrowserExecutor(
                 policy=url_policy,
                 registry=browser_registry,
@@ -105,34 +132,79 @@ def create_app(
             )
             execution_coordinator = ExecutionCoordinator(
                 plans=action_plan_service,
-                repository=repository,
+                repository=action_repository,
                 cipher=PayloadCipher.from_credential_store(credential_store),
                 rfc8058=Rfc8058Executor(
                     policy=url_policy,
                     transport=HttpxRfcTransport(),
                 ),
-                mailto=MailtoExecutor(gmail=gmail_gateway, journal=repository),
+                mailto=MailtoExecutor(gmail=gmail_gateway, journal=action_repository),
                 browser=browser_executor,
             )
             browser_session_service = BrowserSessionService(
                 executor=browser_executor,
                 registry=browser_registry,
-                repository=repository,
+                repository=action_repository,
             )
         except PayloadKeyUnavailable:
             execution_coordinator = None
+    if recovery_service is None:
+        recovery_service = RecoveryService(
+            repository=action_repository,
+            gmail=gmail_gateway,
+            scan_service=scan_service,
+            scan_checkpoints=scan_checkpoints,
+            browser_registry=browser_registry,
+            browser_profile_ttl=timedelta(seconds=settings.browser_profile_ttl_seconds),
+        )
+    readiness = Readiness()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        readiness.ready = False
+        application.state.ready = False
+        if startup_migrator is not None:
+            startup_migrator()
+        if recovery_service is not None:
+            application.state.recovery_report = await recovery_service.run()
+        readiness.ready = True
+        application.state.ready = True
+        try:
+            yield
+        finally:
+            readiness.ready = False
+            application.state.ready = False
+            if browser_executor is not None:
+                await browser_executor.close_all()
+
     application = FastAPI(
         title="Gmail Unsubscribe Agent API",
         version="0.1.0",
         docs_url="/api/docs",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
+    application.state.ready = False
     application.state.candidate_catalog = candidate_catalog
+
+    @application.middleware("http")
+    async def add_security_headers(request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        )
+        response.headers["X-Frame-Options"] = "DENY"
+        return response
+
     application.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=list(settings.allowed_hosts),
     )
-    application.include_router(health_router)
+    application.include_router(create_health_router(readiness))
+    application.include_router(create_event_router(event_repository))
     local_security = create_local_security(
         SessionRegistry(),
         frozenset(settings.allowed_origins),

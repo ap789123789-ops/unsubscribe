@@ -48,9 +48,11 @@ class OAuthCoordinator:
     ) -> OAuthStart:
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
-        challenge = base64.urlsafe_b64encode(
-            hashlib.sha256(verifier.encode("ascii")).digest()
-        ).rstrip(b"=").decode("ascii")
+        challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+            .rstrip(b"=")
+            .decode("ascii")
+        )
         safe_return_to = self._safe_return_to(return_to)
         self._pending[state] = PendingOAuth(verifier, intent, safe_return_to)
         return OAuthStart(
@@ -88,9 +90,18 @@ class OAuthCoordinator:
     def is_connected(self) -> bool:
         return self._credentials.get(self.credential_key) is not None
 
-    def disconnect(self) -> None:
-        self._credentials.delete(self.credential_key)
-        self._credentials.delete(self.scopes_key)
+    def disconnect(self) -> bool:
+        serialized = self._credentials.get(self.credential_key)
+        revoked = False
+        try:
+            if serialized is not None:
+                revoked = self._provider.revoke(serialized)
+        except Exception:  # noqa: BLE001 - local credential deletion must still happen
+            revoked = False
+        finally:
+            self._credentials.delete(self.credential_key)
+            self._credentials.delete(self.scopes_key)
+        return revoked
 
     @staticmethod
     def _safe_return_to(return_to: str) -> str:

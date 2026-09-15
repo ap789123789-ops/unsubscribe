@@ -20,7 +20,20 @@ export function ReviewRoute() {
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    let active = true
+    void listCandidates().then(
+      (loaded) => {
+        if (active) setCandidates(loaded)
+      },
+      () => {
+        if (active) setError('Candidates could not be loaded. Check that the local backend is running.')
+      },
+    ).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => { active = false }
+  }, [])
 
   if (loading) return <main className="page" id="main-content"><p role="status">Loading subscriptions…</p></main>
   if (error) return <main className="page" id="main-content"><p role="alert">{error}</p></main>
@@ -39,4 +52,3 @@ export function ReviewRoute() {
     />
   )
 }
-

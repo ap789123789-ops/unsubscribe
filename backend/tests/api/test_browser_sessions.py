@@ -29,9 +29,7 @@ class FakeBrowserSessions:
 
     async def take_over(self, session_id: str) -> BrowserSessionSnapshot:
         assert session_id == "browser-1"
-        return BrowserSessionSnapshot(
-            **{**self.snapshot.__dict__, "manual_takeover": True}
-        )
+        return BrowserSessionSnapshot(**{**self.snapshot.__dict__, "manual_takeover": True})
 
     async def resume(self, session_id: str) -> ActionRecord:
         return self._action(ActionState.CONFIRMED)

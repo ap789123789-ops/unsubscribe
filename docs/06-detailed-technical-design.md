@@ -1,12 +1,16 @@
 ---
 title: Gmail Unsubscribe Agent — V1 Technical Design
-status: proposed
+status: implemented-awaiting-credentialed-release
 last_updated: 2026-09-14
 owners: maintainers
 reviewers: security, product, engineering
 ---
 
 # V1 technical design
+
+> Implementation status (2026-09-14): the architecture below is implemented as a V1 release
+> candidate. Automated verification is in `make verify`; real Gmail/OpenAI/controlled sender
+> acceptance and manual assistive-technology checks remain explicit local release gates.
 
 ## 1. Summary
 
@@ -310,19 +314,15 @@ The model answers one question: **what is the primary purpose of this message fo
 ### 8.2 Input
 
 ```python
-class ClassificationInput(BaseModel):
-    message_id: str
-    sender_name: str | None
-    sender_address: str
-    sender_domain: str
-    subject: str
-    sent_at: datetime
-    gmail_labels: list[str]
-    list_id: str | None
-    has_list_unsubscribe: bool
-    authentication: AuthenticationEvidence | None
-    deterministic_signals: list[DeterministicSignal]
-    sanitized_body_text: str
+payload = {
+    "message_id": email.gmail_id,
+    "from": email.headers.get("from", ""),
+    "subject": email.headers.get("subject", ""),
+    "list_id": email.headers.get("list-id"),
+    "precedence": email.headers.get("precedence"),
+    "auto_submitted": email.headers.get("auto-submitted"),
+    "sanitized_body": email.model_text,
+}
 ```
 
 The full Gmail body is available to the application, but only normalized, size-capped text required for the decision enters `sanitizedBodyText`. Attachments, remote images, scripts, styles, tracking values, tokens, and quoted history are excluded.
@@ -355,7 +355,10 @@ contain secrets or tracking tokens, and must refer only to supplied data. Set
 needs_user_review when the category is unclear or the evidence is materially mixed.
 ```
 
-The application wraps the payload in explicit `BEGIN_UNTRUSTED_EMAIL_DATA` / `END_UNTRUSTED_EMAIL_DATA` delimiters and passes it as input, not as instructions.
+The checked-in prompt in `backend/app/classification/openai_agent.py` is the exact source of truth.
+It defines the three purposes, treats content/tool results as hostile, limits the tool to ambiguity,
+and forbids side effects. The application wraps JSON in `<untrusted_email>` delimiters and passes it
+as input, not instructions.
 
 ### 8.4 Structured output
 
@@ -363,24 +366,22 @@ The application wraps the payload in explicit `BEGIN_UNTRUSTED_EMAIL_DATA` / `EN
 class ClassificationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    message_id: str
-    category: Literal["marketing", "non_marketing", "unclear"]
-    confidence: Annotated[float, Field(ge=0, le=1)]
-    reason: Annotated[str, Field(min_length=1, max_length=240)]
-    evidence: Annotated[list[Annotated[str, Field(min_length=1, max_length=160)]], Field(max_length=3)]
-    needs_user_review: bool
+    category: ClassificationCategory
+    confidence: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=1, max_length=240)
+    evidence_quote: str = Field(min_length=1, max_length=300)
+    is_subscription: bool
 ```
 
-The Python agent uses this Pydantic model as `output_type`, providing structured output plus local validation. Application post-validation enforces `confidence < 0.80 => unclear`, `unclear => needs_user_review`, exact `message_id`, and protected-rule precedence.
+The Python agent uses this Pydantic model as `output_type`. Application post-validation enforces
+protected-rule precedence, `confidence < 0.65 => unclear`, and an evidence quote that appears in the
+supplied subject/body; invalid or unavailable model results abstain to **unclear**.
 
 ### 8.5 Only model tool
 
 ```python
 @function_tool
-async def get_related_message_samples(
-    grouping_hint: str,
-    max_samples: Literal[1, 2, 3],
-) -> list[RelatedMessageSample]: ...
+async def get_related_message_samples(limit: int = 3) -> list[str]: ...
 ```
 
 The tool queries already retrieved messages for the same normalized sender/list. A run-context counter rejects a second call. It performs no network access and returns no full body. The Python Agents SDK can expose typed Python functions as tools ([quickstart](https://openai.github.io/openai-agents-python/quickstart/)). Configure `max_turns=2`: initial model response, then at most one tool-result response.
@@ -391,20 +392,21 @@ All routes are loopback-only, same-origin, JSON unless noted, and validated with
 
 | Method and route | Purpose | Key request/response |
 |---|---|---|
-| `GET /api/auth/google/start?intent=read\|send` | Start PKCE OAuth with incremental scopes | 302 to Google; server stores short-lived state/nonce. |
+| `GET /api/health` | Report readiness only after startup migration/recovery | `{ status: "ready", api_version: "v1" }`. |
+| `POST /auth/google/start?intent=read\|send` | Start PKCE OAuth with incremental scopes | Returns Google authorization URL; server stores short-lived state/verifier. |
 | `GET /api/auth/google/callback` | Validate state, exchange code, store token in credential store | 302 to setup/review; never returns token to browser. |
-| `GET /api/account` / `DELETE /api/account` | Inspect scopes; disconnect/revoke and remove local credentials | Sanitized account status. |
-| `POST /api/scans` | Start/resume bounded scan | `{ query?, days=30, maxMessages=500 } -> { scanId }`. |
-| `GET /api/scans/:id` | Current counts/checkpoint/status | Durable scan summary. |
-| `GET /api/scans/:id/events` | Stream progress | SSE with monotonic event IDs; reconnect supported. |
+| `GET /api/account` / `POST /api/accounts/disconnect` | Inspect scopes or revoke/remove credentials | Sanitized account status; CSRF on disconnect; local removal still occurs if revocation is unavailable. |
+| `POST /api/scans` | Run/resume a bounded scan | `{ scan_id, days=30, max_messages=500 } -> counts/completion`. |
 | `GET /api/candidates` | Paginated/filterable review list | `category`, `scanId`, `cursor`, `q`; safe excerpts only. |
 | `PATCH /api/candidates/:id/classification` | Store explicit user correction | Candidate revision increments; stale plans invalidated. |
 | `POST /api/action-plans` | Validate selected candidate revisions and create immutable plan | Candidate IDs/revisions -> exact plan and digest. |
 | `POST /api/action-plans/:id/confirm` | Confirm matching digest and start execution | Returns action IDs; rejects stale/mismatched plan. |
-| `GET /api/action-plans/:id/events` | Stream action states/intervention needs | SSE, durable replay by event ID. |
+| `GET /api/action-plans/:id/actions` | Load current action states | Redacted method/state/session references. |
+| `GET /events/actions/:plan_id` | Stream durable action states | SSE replay using `Last-Event-ID`; reconnect supported. |
+| `GET /api/browser-sessions/:id` | Read a redacted blocker snapshot | Origin and safety counters, never a signed URL. |
+| `POST /api/browser-sessions/:id/take-over` | Bring the guarded headed window forward | Network policy stays installed. |
 | `POST /api/browser-sessions/:id/resume` | Resume after explicit user intervention | Same isolated session only. |
 | `POST /api/browser-sessions/:id/cancel` | Stop queued/browser work | Cannot promise recall of an in-flight request. |
-| `POST /api/actions/:id/retry` | One reviewed retry when policy says eligible | Creates a new linked attempt, never overwrites history. |
 
 ## 10. Core Python contracts
 
@@ -454,7 +456,7 @@ For browser V1, **confirmed** requires visible main-content text matching a vers
 - **OAuth:** PKCE, state and nonce validation, exact loopback redirect, incremental scopes, revocation, tokens in Python `keyring`, never browser storage. Accept only macOS Keychain or Linux Secret Service backends; reject plaintext/alternate fallbacks and fail closed for actions when a supported backend is unavailable.
 - **Email content:** parse as hostile; sanitize before UI/model; no active HTML; cap decoded size; attachments excluded; no body/token logging.
 - **Prompt injection:** fixed system prompt, untrusted-data delimiters, strict output, deterministic post-validation, one read-only tool, max turns, no side-effect capability.
-- **Outbound requests/SSRF:** HTTPS-only automatic web actions, default ports, no URL credentials, canonical host, public IP checks for every A/AAAA result immediately before connect, redirect disabled, response/body caps and timeouts.
+- **Outbound requests/SSRF:** HTTPS-only automatic web actions, default ports, no URL credentials, canonical host, public IP checks for every A/AAAA result immediately before connect, RFC IP/Host/SNI pinning, Chromium hostname pinning, redirect disabled, response/body caps and timeouts.
 - **Browser:** temporary isolated profile, no extensions, downloads and permissions denied, service workers blocked, every top-level/subresource request intercepted and checked against the public-network policy, popup/cross-origin pause, profile deleted after terminal state unless retained briefly for an active takeover. Takeover never disables network interception or permits arbitrary private-network navigation.
 - **Web app:** bind `127.0.0.1` rather than all interfaces; strict Host/Origin checks, random per-launch secret, same-site/http-only session cookie, double-submit or server-bound CSRF token for mutations, CSP, output escaping, Pydantic validation, rate/concurrency limits.
 - **Stored action targets:** signed unsubscribe URLs and `mailto:` payloads use an AES-256-GCM versioned envelope with a fresh 96-bit nonce and action ID/schema version as associated data. The random 256-bit key lives in the OS credential store; if it is unavailable, action creation/execution fails closed while scanning/review may continue. Logs/UI retain only redacted origins/recipients. Candidate changes require target re-derivation and a new plan.
@@ -462,9 +464,19 @@ For browser V1, **confirmed** requires visible main-content text matching a vers
 
 ## 13. Observability and recovery
 
-Structured logs contain correlation ID, component, safe event code, duration, retry count, and terminal status. The local activity view is sourced from append-only `action_events`, not transient logs. OpenAI traces are disabled by default for email payload privacy unless the user explicitly enables a documented, redacted diagnostic mode; local model-run metadata retains model/prompt/schema version, latency, token counts, and validation result without body text.
+V1 does not emit provider payloads or email content to application logs. The local activity view is
+sourced from append-only `action_events`, not transient process output. OpenAI traces are disabled
+for email-payload privacy. Correlated redacted operational logging and local model-run metrics are
+future observability work, not part of the V1 release claim.
 
-On startup, scans in progress resume from their checkpoint. Actions left `executing` become `needs_user` unless an executor-specific durable receipt (such as Gmail sent-message ID) proves submission.
+FastAPI's lifespan keeps readiness false while Alembic migrates and `RecoveryService` runs. Incomplete
+read-only scans re-fetch checkpointed `seen_ids` to rebuild the in-memory review catalog, then resume
+from stored `{scan_id, days, max_messages, next_page_token}` data; bodies still are not persisted.
+Actions left `executing` become `needs_user` without repeating the side effect; `mailto:` first looks
+up its deterministic RFC `Message-ID` in Gmail Sent and becomes `submitted` only when found. Terminal
+actions are untouched. Expired inactive `session-*` browser profiles are removed without following
+symlinks. `action_events` are replayed in stable order through `/events/actions/{plan_id}` using
+`Last-Event-ID`; payloads contain only state, safe evidence codes/details, and opaque IDs.
 
 ## 14. Test and evaluation strategy
 
@@ -473,8 +485,14 @@ On startup, scans in progress resume from their checkpoint. Actions left `execut
 - **Integration:** local hostile HTTP/DNS fixtures test redirects, rebinding simulation, oversized/error/timeout responses, RFC body, duplicate requests, and ambiguous disconnects.
 - **Agent evals:** frozen synthetic/scrubbed dataset; per-class precision/recall, abstention quality, schema validity, rule-conflict behavior, injection resistance, tool-call rate/limit, latency/cost. Model/prompt changes must compare against the previous baseline.
 - **Frontend component:** Vitest/Testing Library covers accordion ARIA state, hidden selections, confirmation copy, empty/error/loading states, focus restoration, and responsive behavior.
-- **UI/E2E:** Playwright drives the real React build against real FastAPI and temporary SQLite while external Google/OpenAI/sender boundaries are faked. Cover stale-plan rejection, OAuth callback errors, scope upgrade, exact mail draft, partial batch, crash recovery, popup/takeover, XSS/CSRF, keyboard/focus/live regions, reduced motion, and axe checks.
-- **Real smoke test:** opt-in dedicated Gmail account containing controlled marketing, transactional, and ambiguous messages; required before release, never in CI.
+- **UI/E2E:** Playwright drives the real React build against real FastAPI while external
+  Google/OpenAI/sender boundaries are faked. It covers review/confirmation, exact mail preview,
+  honest result copy, browser takeover/resume, hostile rendered text, Host/CSRF controls, keyboard
+  focus, reduced motion/forced colors, and axe checks. SQLite migration/recovery, OAuth errors,
+  executors, and hostile network fixtures are covered at the API/integration layer.
+- **Real smoke tests:** safe opt-in Gmail/OpenAI read/classification proves the expected account,
+  complete-message retrieval, and a structured `gpt-5-mini` result without side effects. A separate
+  explicit acknowledgement is required for controlled RFC, mailto, and browser fixtures; never CI.
 
 ## 15. Alternatives considered
 
@@ -499,8 +517,10 @@ On startup, scans in progress resume from their checkpoint. Actions left `execut
 4. Ship the review UI and immutable confirmation with all executors disabled.
 5. Enable RFC and `mailto:` individually after security/integration gates.
 6. Enable Python Playwright last after all-request network policy, takeover, origin, retry, and accessibility tests.
-7. Publish V1 only after a clean-clone two-toolchain setup and real-account end-to-end exercise.
+7. Publish V1 only after `make verify`, a clean-clone two-toolchain setup, safe
+   `make smoke-real-read`, the separately acknowledged controlled executor smoke, and the manual
+   accessibility/security checklist all succeed.
 
-Before implementation, resolve retention defaults and the end-user packaging path. Neither changes the component boundaries above.
+Retention defaults and the end-user packaging path remain post-candidate decisions; neither changes the component boundaries above.
 
 The frontend interaction contract is [07-frontend-experience-spec.md](./07-frontend-experience-spec.md). Concrete file-by-file delivery tasks are in [the V1 implementation plan](./superpowers/plans/2026-09-14-gmail-unsubscribe-agent-v1.md). Review findings and closure gates are in [08-plan-validation-report.md](./08-plan-validation-report.md) and the [architecture security review](./reviews/UNSUBSCRIBE_ARCHITECTURE_SECURITY_REVIEW_2026-09-14.md).

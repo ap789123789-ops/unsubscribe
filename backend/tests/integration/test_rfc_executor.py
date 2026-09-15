@@ -10,6 +10,7 @@ from app.executors.rfc8058 import (
     ResponseTooLarge,
     Rfc8058Executor,
 )
+from app.security.url_policy import ValidatedTarget
 
 
 class CountingPolicy:
@@ -35,11 +36,12 @@ async def test_rfc_executor_posts_exact_body_once_and_records_only_submitted() -
     policy = CountingPolicy()
     transport = RecordingTransport(HttpResponse(status_code=204, body=b""))
     executor = Rfc8058Executor(policy=policy, transport=transport)
-    target = type(
-        "Validated",
-        (),
-        {"url": "https://example.com/u?t=private", "origin": "https://example.com"},
-    )()
+    target = ValidatedTarget(
+        url="https://example.com/u?t=private",
+        origin="https://example.com",
+        hostname="example.com",
+        addresses=("93.184.216.34",),
+    )
 
     result = await executor.execute(Rfc8058Payload(target=target))
 
@@ -48,24 +50,25 @@ async def test_rfc_executor_posts_exact_body_once_and_records_only_submitted() -
     assert len(transport.calls) == 1
     assert transport.calls[0]["body"] == b"List-Unsubscribe=One-Click"
     assert transport.calls[0]["follow_redirects"] is False
-    assert transport.calls[0]["headers"] == {
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
+    assert transport.calls[0]["connect_ip"] == "93.184.216.34"
+    assert transport.calls[0]["server_hostname"] == "example.com"
+    assert transport.calls[0]["headers"] == {"Content-Type": "application/x-www-form-urlencoded"}
 
 
 async def test_rfc_redirect_is_not_followed_or_claimed_complete() -> None:
     transport = RecordingTransport(
         HttpResponse(status_code=302, body=b"", location="https://other.example/u")
     )
-    target = type(
-        "Validated",
-        (),
-        {"url": "https://example.com/u", "origin": "https://example.com"},
-    )()
+    target = ValidatedTarget(
+        url="https://example.com/u",
+        origin="https://example.com",
+        hostname="example.com",
+        addresses=("93.184.216.34",),
+    )
 
-    result = await Rfc8058Executor(
-        policy=CountingPolicy(), transport=transport
-    ).execute(Rfc8058Payload(target=target))
+    result = await Rfc8058Executor(policy=CountingPolicy(), transport=transport).execute(
+        Rfc8058Payload(target=target)
+    )
 
     assert result.state is ActionState.NEEDS_USER
     assert result.evidence_code == "redirect_blocked"
@@ -74,15 +77,16 @@ async def test_rfc_redirect_is_not_followed_or_claimed_complete() -> None:
 
 async def test_rfc_503_is_retryable_only_after_user_review() -> None:
     transport = RecordingTransport(HttpResponse(status_code=503, body=b"busy"))
-    target = type(
-        "Validated",
-        (),
-        {"url": "https://example.com/u", "origin": "https://example.com"},
-    )()
+    target = ValidatedTarget(
+        url="https://example.com/u",
+        origin="https://example.com",
+        hostname="example.com",
+        addresses=("93.184.216.34",),
+    )
 
-    result = await Rfc8058Executor(
-        policy=CountingPolicy(), transport=transport
-    ).execute(Rfc8058Payload(target=target))
+    result = await Rfc8058Executor(policy=CountingPolicy(), transport=transport).execute(
+        Rfc8058Payload(target=target)
+    )
 
     assert result.state is ActionState.FAILED
     assert result.retryable is True
@@ -101,6 +105,8 @@ async def test_http_transport_caps_response_and_sends_no_ambient_credentials() -
     with pytest.raises(ResponseTooLarge):
         await transport.post(
             url="https://example.com/u",
+            connect_ip="93.184.216.34",
+            server_hostname="example.com",
             body=b"List-Unsubscribe=One-Click",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             follow_redirects=False,
@@ -108,5 +114,8 @@ async def test_http_transport_caps_response_and_sends_no_ambient_credentials() -
 
     assert len(seen) == 1
     assert seen[0].content == b"List-Unsubscribe=One-Click"
+    assert seen[0].url.host == "93.184.216.34"
+    assert seen[0].headers["host"] == "example.com"
+    assert seen[0].extensions["sni_hostname"] == "example.com"
     assert "authorization" not in seen[0].headers
     assert "cookie" not in seen[0].headers

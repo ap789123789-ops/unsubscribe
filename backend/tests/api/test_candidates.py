@@ -58,4 +58,3 @@ def test_candidate_list_redacts_target_and_correction_creates_revision() -> None
     assert corrected.status_code == 200
     assert corrected.json()["revision"] == 2
     assert corrected.json()["category"] == "unclear"
-

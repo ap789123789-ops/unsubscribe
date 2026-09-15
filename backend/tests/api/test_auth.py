@@ -20,20 +20,24 @@ class MemoryCredentials:
 
 
 class FakeProvider:
-    def authorization_url(
-        self, *, state: str, code_challenge: str, intent: OAuthIntent
-    ) -> str:
+    def __init__(self) -> None:
+        self.revoked: list[str] = []
+
+    def authorization_url(self, *, state: str, code_challenge: str, intent: OAuthIntent) -> str:
         return f"https://accounts.example/auth?state={state}&challenge={code_challenge}"
 
-    def exchange_code(
-        self, *, code: str, code_verifier: str, intent: OAuthIntent
-    ) -> OAuthToken:
+    def exchange_code(self, *, code: str, code_verifier: str, intent: OAuthIntent) -> OAuthToken:
         return OAuthToken("stored-token", ("gmail.readonly",))
+
+    def revoke(self, serialized_credentials: str) -> bool:
+        self.revoked.append(serialized_credentials)
+        return True
 
 
 def test_oauth_api_requires_local_confirmation_and_supports_disconnect() -> None:
     credentials = MemoryCredentials()
-    app = create_app(oauth_coordinator=OAuthCoordinator(FakeProvider(), credentials))
+    provider = FakeProvider()
+    app = create_app(oauth_coordinator=OAuthCoordinator(provider, credentials))
     client = TestClient(app, base_url="http://127.0.0.1:8000")
     csrf = client.get("/api/session").json()["csrf_token"]
     mutation_headers = {
@@ -58,4 +62,5 @@ def test_oauth_api_requires_local_confirmation_and_supports_disconnect() -> None
     }
     assert credentials.get("google-oauth") == "stored-token"
     assert client.post("/api/accounts/disconnect", headers=mutation_headers).status_code == 204
+    assert provider.revoked == ["stored-token"]
     assert credentials.get("google-oauth") is None

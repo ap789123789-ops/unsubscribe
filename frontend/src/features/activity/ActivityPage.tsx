@@ -37,7 +37,7 @@ export function ActivityPage() {
   const [status, setStatus] = useState('')
   const [error, setError] = useState<string | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
-  const triggers = useRef(new Map<string, HTMLButtonElement>())
+  const dialogRef = useRef<HTMLElement>(null)
   const rows = useRef(new Map<string, HTMLLIElement>())
   const pendingFocus = useRef<string | null>(null)
 
@@ -48,14 +48,30 @@ export function ActivityPage() {
   }, [planId])
 
   useEffect(() => {
+    if (!planId) return undefined
+    const events = new EventSource(`/events/actions/${encodeURIComponent(planId)}`)
+    const updateFromEvent = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as { action_id: string; state: string }
+        setActions((current) => current.map((action) => (
+          action.id === payload.action_id ? { ...action, state: payload.state } : action
+        )))
+      } catch {
+        setError('A live activity update could not be read.')
+      }
+    }
+    events.addEventListener('action-state', updateFromEvent)
+    return () => events.close()
+  }, [planId])
+
+  useEffect(() => {
     if (intervention) headingRef.current?.focus()
   }, [intervention])
 
   useEffect(() => {
     if (intervention || !pendingFocus.current) return
     const actionId = pendingFocus.current
-    const trigger = triggers.current.get(actionId)
-    const target = trigger?.isConnected ? trigger : rows.current.get(actionId)
+    const target = rows.current.get(actionId)
     target?.focus()
     if (document.activeElement === target) pendingFocus.current = null
   }, [actions, intervention])
@@ -117,6 +133,27 @@ export function ActivityPage() {
     }
   }
 
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeIntervention()
+      return
+    }
+    if (event.key !== 'Tab' || !dialogRef.current) return
+    const focusable = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>('[tabindex="-1"], button:not(:disabled)'),
+    )
+    const first = focusable[0]
+    const last = focusable.at(-1)
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last?.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first?.focus()
+    }
+  }
+
   return (
     <main className="page" id="main-content">
       <p className="context-line">Unsubscribe activity</p>
@@ -151,10 +188,6 @@ export function ActivityPage() {
                 <button
                   className="secondary-action"
                   type="button"
-                  ref={(node) => {
-                    if (node) triggers.current.set(action.id, node)
-                    else triggers.current.delete(action.id)
-                  }}
                   onClick={() => openIntervention(action)}
                 >
                   Review browser blocker
@@ -169,10 +202,12 @@ export function ActivityPage() {
       {intervention && (
         <div className="dialog-backdrop">
           <section
+            ref={dialogRef}
             className="evidence-dialog intervention-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="browser-blocker-title"
+            onKeyDown={handleDialogKeyDown}
           >
             <p className="context-line">Guarded browser paused</p>
             <h2 id="browser-blocker-title" ref={headingRef} tabIndex={-1}>Your help is needed</h2>

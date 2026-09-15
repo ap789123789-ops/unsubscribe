@@ -56,6 +56,8 @@ class ScanCheckpointORM(Base):
     scan_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     next_page_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     seen_message_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    days: Mapped[int] = mapped_column(Integer, default=30)
+    max_messages: Mapped[int] = mapped_column(Integer, default=500)
     completed: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -138,7 +140,8 @@ class UnsubscribeActionORM(Base):
 class ActionEventORM(Base):
     __tablename__ = "action_events"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    stream_sequence: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(String(36), unique=True, default=uuid_string)
     action_id: Mapped[str] = mapped_column(ForeignKey("unsubscribe_actions.id"))
     sequence: Mapped[int] = mapped_column(Integer)
     from_state: Mapped[str | None] = mapped_column(String(40), nullable=True)

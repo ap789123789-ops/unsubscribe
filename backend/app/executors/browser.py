@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -24,13 +25,23 @@ from playwright.async_api import (
 from app.domain.state_machine import ActionState
 from app.executors.browser_policy import BrowserOutcomePolicy
 from app.executors.models import BrowserPayload, ExecutionResult
-from app.security.url_policy import UnsafeTarget, UrlSafetyPolicy
+from app.security.url_policy import UnsafeTarget, UrlSafetyPolicy, ValidatedTarget
 
 UNSUBSCRIBE_CONTROL = re.compile(r"\b(unsubscribe|opt[ -]?out|remove me)\b", re.I)
 LOGIN_OR_CHALLENGE = re.compile(
     r"\b(sign in|log in|password|two.factor|verification code|captcha|verify you are human|mfa)\b",
     re.I,
 )
+
+
+def chromium_pinning_args(target: ValidatedTarget) -> list[str]:
+    """Force Chromium to connect to the address that passed the final policy check."""
+    pinned_address = target.addresses[0]
+    return [
+        "--disable-extensions",
+        "--disable-component-extensions-with-background-pages",
+        f"--host-resolver-rules=MAP {target.hostname} {pinned_address}, EXCLUDE localhost",
+    ]
 
 
 @dataclass(frozen=True)
@@ -110,6 +121,25 @@ class BrowserSessionRegistry:
     def remove(self, session_id: str) -> BrowserSession | None:
         return self._sessions.pop(session_id, None)
 
+    def cleanup_expired(self, cutoff: datetime) -> int:
+        active_profiles = {session.profile_path.resolve() for session in self._sessions.values()}
+        removed = 0
+        for profile in self.profile_root.iterdir():
+            if (
+                not profile.name.startswith("session-")
+                or profile.is_symlink()
+                or not profile.is_dir()
+                or profile.resolve() in active_profiles
+            ):
+                continue
+            modified = datetime.fromtimestamp(profile.stat().st_mtime, UTC)
+            if modified >= cutoff:
+                continue
+            shutil.rmtree(profile, ignore_errors=True)
+            if not profile.exists():
+                removed += 1
+        return removed
+
 
 class BrowserExecutor:
     def __init__(
@@ -136,7 +166,7 @@ class BrowserExecutor:
                 safe_detail="The website failed its final public-network safety check.",
             )
         try:
-            session = await self._launch(action_id, target.origin)
+            session = await self._launch(action_id, target)
         except Exception:
             return ExecutionResult(
                 state=ActionState.FAILED,
@@ -204,7 +234,12 @@ class BrowserExecutor:
         await self._close(session)
         return snapshot
 
-    async def _launch(self, action_id: str, origin: str) -> BrowserSession:
+    async def close_all(self) -> None:
+        for snapshot in self._registry.snapshots():
+            with suppress(KeyError):
+                await self.cancel(snapshot.id)
+
+    async def _launch(self, action_id: str, target: ValidatedTarget) -> BrowserSession:
         profile = self._registry.create_profile()
         playwright = await async_playwright().start()
         try:
@@ -213,10 +248,7 @@ class BrowserExecutor:
                 headless=self._headless,
                 accept_downloads=False,
                 service_workers="block",
-                args=[
-                    "--disable-extensions",
-                    "--disable-component-extensions-with-background-pages",
-                ],
+                args=chromium_pinning_args(target),
             )
             await context.clear_permissions()
             page = context.pages[0] if context.pages else await context.new_page()
@@ -231,7 +263,7 @@ class BrowserExecutor:
             context=context,
             page=page,
             profile_path=profile,
-            origin=origin,
+            origin=target.origin,
         )
 
     async def _install_guards(self, session: BrowserSession) -> None:
@@ -247,27 +279,29 @@ class BrowserExecutor:
                     )
                 await route.abort("blockedbyclient")
                 return
-            if request.is_navigation_request() and request.frame == session.page.main_frame:
-                request_origin = self._origin(request.url)
-                if request_origin != session.origin:
-                    session.blocked_request_count += 1
+            request_origin = self._origin(request.url)
+            if request_origin != session.origin:
+                session.blocked_request_count += 1
+                if request.is_navigation_request() and request.frame == session.page.main_frame:
                     self._block(
                         session,
                         "cross_origin_navigation",
                         "The page tried to move to a different website.",
                     )
+                await route.abort("blockedbyclient")
+                return
+            if (
+                request.is_navigation_request()
+                and request.frame == session.page.main_frame
+                and not session.final_click_issued
+            ):
+                session.navigation_count += 1
+                if session.navigation_count > 2:
+                    session.blocked_request_count += 1
+                    session.blocker_code = "navigation_limit_reached"
+                    session.blocker_detail = "The page exceeded the two-navigation safety limit."
                     await route.abort("blockedbyclient")
                     return
-                if not session.final_click_issued:
-                    session.navigation_count += 1
-                    if session.navigation_count > 2:
-                        session.blocked_request_count += 1
-                        session.blocker_code = "navigation_limit_reached"
-                        session.blocker_detail = (
-                            "The page exceeded the two-navigation safety limit."
-                        )
-                        await route.abort("blockedbyclient")
-                        return
             await route.continue_()
 
         await session.context.route("**/*", route_request)
@@ -307,9 +341,7 @@ class BrowserExecutor:
         )
         await dialog.dismiss()
 
-    def _record_failed_navigation(
-        self, session: BrowserSession, request: Request
-    ) -> None:
+    def _record_failed_navigation(self, session: BrowserSession, request: Request) -> None:
         if (
             session.final_click_issued
             and request.is_navigation_request()
@@ -323,9 +355,7 @@ class BrowserExecutor:
 
     async def _advance(self, session: BrowserSession) -> ExecutionResult:
         if session.blocker_code:
-            return await self._needs_user(
-                session, session.blocker_code, session.blocker_detail
-            )
+            return await self._needs_user(session, session.blocker_code, session.blocker_detail)
         if session.page.is_closed():
             return await self._needs_user(
                 session,
@@ -382,9 +412,7 @@ class BrowserExecutor:
                 "The final click outcome is uncertain; it will not be repeated automatically.",
             )
         if session.blocker_code:
-            return await self._needs_user(
-                session, session.blocker_code, session.blocker_detail
-            )
+            return await self._needs_user(session, session.blocker_code, session.blocker_detail)
         if session.page.is_closed():
             return await self._needs_user(
                 session,
@@ -436,9 +464,7 @@ class BrowserExecutor:
                 )
         return None
 
-    async def _needs_user(
-        self, session: BrowserSession, code: str, detail: str
-    ) -> ExecutionResult:
+    async def _needs_user(self, session: BrowserSession, code: str, detail: str) -> ExecutionResult:
         session.state = ActionState.NEEDS_USER
         session.blocker_code = code
         session.blocker_detail = detail
@@ -449,9 +475,7 @@ class BrowserExecutor:
             external_id=session.id,
         )
 
-    async def _finish(
-        self, session: BrowserSession, result: ExecutionResult
-    ) -> ExecutionResult:
+    async def _finish(self, session: BrowserSession, result: ExecutionResult) -> ExecutionResult:
         session.state = result.state
         await self._close(session)
         return result

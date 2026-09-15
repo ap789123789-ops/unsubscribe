@@ -48,10 +48,7 @@ async def test_all_dns_answers_must_be_public_and_target_is_rechecked() -> None:
 
 
 async def test_mixed_public_and_private_dns_answers_are_rejected() -> None:
-    policy = UrlSafetyPolicy(
-        resolver=SequenceResolver([("93.184.216.34", "10.0.0.7")])
-    )
+    policy = UrlSafetyPolicy(resolver=SequenceResolver([("93.184.216.34", "10.0.0.7")]))
 
     with pytest.raises(UnsafeTarget, match="public"):
         await policy.validate_at_plan_time("https://example.com/u")
-

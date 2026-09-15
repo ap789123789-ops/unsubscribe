@@ -1,2 +1,1 @@
 """Gmail Unsubscribe Agent backend."""
-

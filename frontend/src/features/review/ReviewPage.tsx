@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export type Category = 'marketing' | 'unclear' | 'non_marketing'
 export type Method = 'rfc8058' | 'mailto' | 'browser'
@@ -49,14 +49,46 @@ export function ReviewPage({ candidates, onCreatePlan, onCorrect }: ReviewPagePr
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [evidenceId, setEvidenceId] = useState<string | null>(null)
   const evidenceTriggers = useRef(new Map<string, HTMLButtonElement>())
+  const evidenceDialog = useRef<HTMLElement>(null)
+  const evidenceHeading = useRef<HTMLHeadingElement>(null)
+  const pendingEvidenceFocus = useRef<string | null>(null)
   const evidence = candidates.find((candidate) => candidate.id === evidenceId)
 
+  useEffect(() => {
+    if (evidenceId) {
+      evidenceHeading.current?.focus()
+      return
+    }
+    if (pendingEvidenceFocus.current) {
+      evidenceTriggers.current.get(pendingEvidenceFocus.current)?.focus()
+      pendingEvidenceFocus.current = null
+    }
+  }, [evidenceId])
+
   const closeEvidence = () => {
-    const closingId = evidenceId
+    pendingEvidenceFocus.current = evidenceId
     setEvidenceId(null)
-    window.setTimeout(() => {
-      if (closingId) evidenceTriggers.current.get(closingId)?.focus()
-    }, 0)
+  }
+
+  const handleEvidenceKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeEvidence()
+      return
+    }
+    if (event.key !== 'Tab' || !evidenceDialog.current) return
+    const focusable = Array.from(
+      evidenceDialog.current.querySelectorAll<HTMLElement>('[tabindex="-1"], button:not(:disabled)'),
+    )
+    const first = focusable[0]
+    const last = focusable.at(-1)
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last?.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first?.focus()
+    }
   }
 
   const toggleSelected = (id: string) => {
@@ -143,6 +175,7 @@ export function ReviewPage({ candidates, onCreatePlan, onCorrect }: ReviewPagePr
                                 type="button"
                                 ref={(node) => {
                                   if (node) evidenceTriggers.current.set(candidate.id, node)
+                                  else evidenceTriggers.current.delete(candidate.id)
                                 }}
                                 onClick={() => setEvidenceId(candidate.id)}
                                 aria-label={`View evidence for ${name}`}
@@ -207,12 +240,19 @@ export function ReviewPage({ candidates, onCreatePlan, onCorrect }: ReviewPagePr
 
       {evidence && (
         <div className="dialog-backdrop">
-          <section className="evidence-dialog" role="dialog" aria-modal="true" aria-labelledby="evidence-title">
+          <section
+            ref={evidenceDialog}
+            className="evidence-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="evidence-title"
+            onKeyDown={handleEvidenceKeyDown}
+          >
             <p className="context-line">{senderName(evidence.sender)}</p>
-            <h2 id="evidence-title">Classification evidence</h2>
+            <h2 id="evidence-title" ref={evidenceHeading} tabIndex={-1}>Classification evidence</h2>
             <blockquote>{evidence.evidenceQuote}</blockquote>
             <p>{evidence.reason}</p>
-            <button className="secondary-action" type="button" onClick={closeEvidence} autoFocus>
+            <button className="secondary-action" type="button" onClick={closeEvidence}>
               Close evidence
             </button>
           </section>

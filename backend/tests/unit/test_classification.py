@@ -84,4 +84,3 @@ async def test_oversized_message_abstains_without_model_disclosure() -> None:
 
     assert result.category is ClassificationCategory.UNCLEAR
     assert model.calls == 0
-

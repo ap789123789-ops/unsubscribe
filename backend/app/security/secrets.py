@@ -1,7 +1,11 @@
 from typing import Protocol
 
 import keyring
+from keyring.backends.macOS import Keyring as MacOSKeyring
+from keyring.backends.SecretService import Keyring as SecretServiceKeyring
 from keyring.errors import PasswordDeleteError
+
+SUPPORTED_BACKEND_TYPES: tuple[type[object], ...] = (MacOSKeyring, SecretServiceKeyring)
 
 
 class CredentialBackend(Protocol):
@@ -21,17 +25,7 @@ class KeyringCredentialStore:
 
     def __init__(self, backend: CredentialBackend | None = None) -> None:
         self._backend = backend or keyring.get_keyring()
-        identifier = " ".join(
-            value
-            for value in (
-                getattr(self._backend, "name", None),
-                self._backend.__class__.__module__,
-                self._backend.__class__.__name__,
-            )
-            if value
-        ).lower()
-        allowed = ("macos", "keychain", "secretservice", "secret service")
-        if not any(marker in identifier for marker in allowed):
+        if not isinstance(self._backend, SUPPORTED_BACKEND_TYPES):
             raise InsecureCredentialBackend(
                 "A supported macOS Keychain or Linux Secret Service backend is required"
             )
@@ -47,4 +41,3 @@ class KeyringCredentialStore:
             self._backend.delete_password(self.service_name, key)
         except PasswordDeleteError:
             return
-

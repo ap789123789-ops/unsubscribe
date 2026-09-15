@@ -1,11 +1,25 @@
-from fastapi import APIRouter
+from dataclasses import dataclass
+
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.schemas import HealthResponse
 
-router = APIRouter(tags=["system"])
+
+@dataclass
+class Readiness:
+    ready: bool = False
 
 
-@router.get("/api/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
-    return HealthResponse()
+def create_health_router(readiness: Readiness) -> APIRouter:
+    router = APIRouter(tags=["system"])
 
+    @router.get("/api/health", response_model=HealthResponse)
+    async def health() -> HealthResponse:
+        if not readiness.ready:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Startup recovery is still running",
+            )
+        return HealthResponse()
+
+    return router

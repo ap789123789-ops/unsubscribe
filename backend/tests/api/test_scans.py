@@ -33,8 +33,11 @@ def test_scan_api_enforces_bounds_and_returns_completed_result() -> None:
         "processed_count": 1,
         "completed": True,
     }
-    assert client.post(
-        "/api/scans",
-        headers=headers,
-        json={"days": 30, "max_messages": 501},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/scans",
+            headers=headers,
+            json={"days": 30, "max_messages": 501},
+        ).status_code
+        == 422
+    )

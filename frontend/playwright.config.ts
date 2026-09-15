@@ -5,6 +5,7 @@ export default defineConfig({
   timeout: 20_000,
   expect: { timeout: 5_000 },
   fullyParallel: false,
+  workers: process.env.CI ? 1 : undefined,
   use: {
     baseURL: 'http://127.0.0.1:8000',
     trace: 'retain-on-failure',

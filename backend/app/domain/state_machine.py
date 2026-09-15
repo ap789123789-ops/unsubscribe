@@ -21,7 +21,7 @@ ALLOWED_ACTION_TRANSITIONS: dict[ActionState, frozenset[ActionState]] = {
     ActionState.DISCOVERED: frozenset({ActionState.REVIEWED}),
     ActionState.REVIEWED: frozenset({ActionState.SELECTED}),
     ActionState.SELECTED: frozenset({ActionState.REVIEWED, ActionState.CONFIRMED_BY_USER}),
-    ActionState.CONFIRMED_BY_USER: frozenset({ActionState.EXECUTING}),
+    ActionState.CONFIRMED_BY_USER: frozenset({ActionState.EXECUTING, ActionState.REVIEWED}),
     ActionState.EXECUTING: frozenset(
         {
             ActionState.CONFIRMED,

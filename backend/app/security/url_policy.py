@@ -18,7 +18,7 @@ class SystemHostResolver:
     async def resolve(self, hostname: str) -> tuple[str, ...]:
         def lookup() -> tuple[str, ...]:
             records = socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
-            return tuple(sorted({record[4][0] for record in records}))
+            return tuple(sorted({str(record[4][0]) for record in records}))
 
         try:
             return await asyncio.to_thread(lookup)
@@ -41,9 +41,7 @@ class UrlSafetyPolicy:
     async def validate_at_plan_time(self, target: str) -> ValidatedTarget:
         return await self._validate(target)
 
-    async def revalidate_before_connect(
-        self, target: ValidatedTarget
-    ) -> ValidatedTarget:
+    async def revalidate_before_connect(self, target: ValidatedTarget) -> ValidatedTarget:
         refreshed = await self._validate(target.url)
         if refreshed.hostname != target.hostname:
             raise UnsafeTarget("The unsubscribe host changed after review")

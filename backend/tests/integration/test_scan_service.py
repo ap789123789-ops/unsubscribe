@@ -73,3 +73,26 @@ async def test_sqlite_checkpoint_survives_a_new_service_instance(tmp_path) -> No
     assert result.completed is True
     assert result.processed_count == 1
     assert received == ["m1"]
+
+
+async def test_rehydration_skips_an_unreadable_checkpoint_without_losing_other_messages() -> None:
+    gateway = FakeGmailGateway(
+        pages={},
+        messages={
+            "available": GmailMessage("available", "t1", 10, {}),
+            "deleted": GmailMessage("deleted", "t2", 10, {}),
+        },
+        read_failures={"deleted": 3},
+    )
+    checkpoints = InMemoryScanCheckpointStore()
+    request = ScanRequest(scan_id="rehydrate-partial")
+    checkpoints.mark_seen(request.scan_id, "available")
+    checkpoints.mark_seen(request.scan_id, "deleted")
+    received: list[str] = []
+    service = ScanService(gateway, checkpoints, lambda message: received.append(message.id))
+
+    result = await service.rehydrate(request)
+
+    assert result.rehydrated == 1
+    assert result.failed == 1
+    assert received == ["available"]

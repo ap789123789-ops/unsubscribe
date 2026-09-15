@@ -3,7 +3,7 @@ import hashlib
 import json
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from app.actions.planner import ActionPlan, ActionPlanService, PlannedAction
+from app.actions.planner import ActionPlan, ActionPlanService, PlannedAction, digest_item
 from app.domain.models import ActionRecord, UnsubscribeMethod
 from app.domain.state_machine import ActionState
 from app.executors.browser import BrowserExecutor
@@ -15,6 +15,10 @@ from app.security.payload_crypto import PayloadCipher
 
 
 class ExecutionUnavailable(RuntimeError):
+    pass
+
+
+class ActionAlreadyAttempted(RuntimeError):
     pass
 
 
@@ -37,23 +41,31 @@ class ExecutionCoordinator:
         self._browser = browser
         self._lock = asyncio.Lock()
 
-    async def confirm_and_execute(
-        self, plan_id: str, digest: str
-    ) -> tuple[ActionRecord, ...]:
+    async def confirm_and_execute(self, plan_id: str, digest: str) -> tuple[ActionRecord, ...]:
         async with self._lock:
             pending = self._plans.get(plan_id)
             if pending is None:
                 raise KeyError(plan_id)
+            if pending.confirmed:
+                return self._repository.list_for_plan(pending.id)
+            actions = tuple(self._build_action(pending, item) for item in pending.items)
             if any(
-                item.method is UnsubscribeMethod.MAILTO for item in pending.items
-            ) and not await self._mailto.is_authorized():
+                self._repository.get_by_idempotency_key(action.idempotency_key) is not None
+                for action in actions
+            ):
+                raise ActionAlreadyAttempted(
+                    "An unchanged version of this unsubscribe action was already attempted."
+                )
+            if (
+                any(item.method is UnsubscribeMethod.MAILTO for item in pending.items)
+                and not await self._mailto.is_authorized()
+            ):
                 raise SendAuthorizationRequired(
                     "Gmail send permission is required before confirmation"
                 )
             plan, newly_confirmed = await self._plans.confirm(plan_id, digest)
             if not newly_confirmed:
                 return self._repository.list_for_plan(plan.id)
-            actions = tuple(self._build_action(plan, item) for item in plan.items)
             self._repository.create_confirmed_plan(plan, actions)
             results: list[ActionRecord] = []
             for action, item in zip(actions, plan.items, strict=True):
@@ -108,7 +120,10 @@ class ExecutionCoordinator:
         return self._repository.list_for_plan(plan_id)
 
     def _build_action(self, plan: ActionPlan, item: PlannedAction) -> ActionRecord:
-        action_id = uuid5(NAMESPACE_URL, f"{plan.id}:{item.candidate_id}:{item.revision}")
+        semantic_fingerprint = hashlib.sha256(
+            json.dumps(digest_item(item), sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        action_id = uuid5(NAMESPACE_URL, f"unsubscribe-action:{semantic_fingerprint}")
         payload: dict[str, object]
         if item.method is UnsubscribeMethod.MAILTO:
             assert item.mail_draft is not None
@@ -121,22 +136,11 @@ class ExecutionCoordinator:
             }
         else:
             payload = {"version": 1, "method": item.method.value, "target": item.target}
-        idempotency_key = hashlib.sha256(
-            json.dumps(
-                {
-                    "plan": plan.id,
-                    "candidate": item.candidate_id,
-                    "revision": item.revision,
-                    "method": item.method.value,
-                },
-                sort_keys=True,
-            ).encode()
-        ).hexdigest()
         return ActionRecord(
             id=action_id,
             plan_id=UUID(plan.id),
             candidate_id=UUID(item.candidate_id),
-            idempotency_key=idempotency_key,
+            idempotency_key=semantic_fingerprint,
             method=item.method,
             state=ActionState.CONFIRMED_BY_USER,
             encrypted_payload=self._cipher.encrypt(action_id, payload),

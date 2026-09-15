@@ -27,7 +27,19 @@ class ScanResult:
     completed: bool
 
 
+@dataclass(frozen=True)
+class RehydrationResult:
+    rehydrated: int
+    failed: int
+
+
 class ScanCheckpointStore(Protocol):
+    def remember_request(self, request: ScanRequest) -> None: ...
+
+    def incomplete_requests(self) -> tuple[ScanRequest, ...]: ...
+
+    def seen_message_ids(self, scan_id: str) -> tuple[str, ...]: ...
+
     def page_token(self, scan_id: str) -> str | None: ...
 
     def has_seen(self, scan_id: str, message_id: str) -> bool: ...
@@ -49,6 +61,18 @@ class InMemoryScanCheckpointStore:
     seen: dict[str, set[str]] = field(default_factory=dict)
     completed: set[str] = field(default_factory=set)
     page_tokens: list[str | None] = field(default_factory=list)
+    requests: dict[str, ScanRequest] = field(default_factory=dict)
+
+    def remember_request(self, request: ScanRequest) -> None:
+        self.requests[request.scan_id] = request
+
+    def incomplete_requests(self) -> tuple[ScanRequest, ...]:
+        return tuple(
+            request for scan_id, request in self.requests.items() if scan_id not in self.completed
+        )
+
+    def seen_message_ids(self, scan_id: str) -> tuple[str, ...]:
+        return tuple(sorted(self.seen.get(scan_id, set())))
 
     def page_token(self, scan_id: str) -> str | None:
         return self.tokens.get(scan_id)
@@ -87,7 +111,24 @@ class ScanService:
         self._message_sink = message_sink
         self._retry_delays = retry_delays
 
+    async def rehydrate(self, request: ScanRequest) -> RehydrationResult:
+        """Rebuild transient review state from checkpointed Gmail message IDs."""
+        rehydrated = 0
+        failed = 0
+        for message_id in self._checkpoints.seen_message_ids(request.scan_id):
+            try:
+                message = await self._read_with_retry(message_id)
+                sink_result = self._message_sink(message)
+                if inspect.isawaitable(sink_result):
+                    await sink_result
+            except Exception:  # noqa: BLE001 - one missing message must not block scan recovery
+                failed += 1
+                continue
+            rehydrated += 1
+        return RehydrationResult(rehydrated=rehydrated, failed=failed)
+
     async def run(self, request: ScanRequest) -> ScanResult:
+        self._checkpoints.remember_request(request)
         if self._checkpoints.is_complete(request.scan_id):
             return ScanResult(request.scan_id, self._checkpoints.count(request.scan_id), True)
 

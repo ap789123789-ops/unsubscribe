@@ -1,2 +1,1 @@
 """Subscription candidate grouping."""
-

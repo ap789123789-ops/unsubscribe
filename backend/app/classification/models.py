@@ -22,4 +22,3 @@ class ClassificationResult(ClassificationOutput):
 
 class ClassifierModel(Protocol):
     async def classify(self, email: NormalizedEmail) -> ClassificationOutput: ...
-

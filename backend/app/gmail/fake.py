@@ -38,4 +38,3 @@ class FakeGmailGateway:
 
     async def profile_email(self) -> str:
         return self.email
-
