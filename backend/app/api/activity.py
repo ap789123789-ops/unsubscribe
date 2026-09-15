@@ -46,10 +46,7 @@ def activity_response(record: ActivityRecord) -> ActivityActionResponse:
         and action.state is ActionState.NEEDS_USER
         and record.evidence_code == "gmail_send_authorization_required"
     )
-    retry_available = (
-        action.retry_count == 0
-        and (rfc_retry or mailto_retry)
-    )
+    retry_available = action.retry_count == 0 and (rfc_retry or mailto_retry)
     return ActivityActionResponse(
         id=str(action.id),
         plan_id=str(action.plan_id),
