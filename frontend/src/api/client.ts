@@ -150,6 +150,30 @@ export async function listPlanActions(planId: string): Promise<ActionView[]> {
   return data.items
 }
 
+export type ActivityActionView = components['schemas']['ActivityActionResponse']
+
+export async function listActions(planId?: string): Promise<ActivityActionView[]> {
+  const { data, error } = await api.GET('/api/actions', {
+    params: { query: { limit: 500, ...(planId ? { plan_id: planId } : {}) } },
+  })
+  if (error || !data) throw new Error('Action activity could not be loaded')
+  return data.items
+}
+
+export async function retryAction(actionId: string): Promise<ActivityActionView> {
+  const { data, error } = await api.POST('/api/actions/{action_id}/retry', {
+    params: { path: { action_id: actionId } },
+    headers: await mutationHeaders(),
+  })
+  if (error || !data) {
+    const detail = (error as { detail?: { code?: string; message?: string } } | undefined)?.detail
+    const failure = new Error(detail?.message ?? 'This action could not be retried')
+    failure.name = detail?.code ?? 'action_retry_failed'
+    throw failure
+  }
+  return data
+}
+
 export type BrowserSessionView = components['schemas']['BrowserSessionResponse']
 
 export async function getBrowserSession(sessionId: string): Promise<BrowserSessionView> {

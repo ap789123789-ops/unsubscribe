@@ -17,10 +17,10 @@ export function AppRouter() {
         <Route path="scan" element={<ScanPage />} />
         <Route path="review" element={<ReviewRoute />} />
         <Route path="confirm/:planId" element={<ConfirmationPage />} />
+        <Route path="activity" element={<ActivityPage />} />
         <Route path="activity/:planId" element={<ActivityPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   )
 }
-

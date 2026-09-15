@@ -25,6 +25,7 @@ export function AppShell() {
           <nav aria-label="Primary navigation">
             <NavLink to="/scan">Scan</NavLink>
             <NavLink to="/review">Review</NavLink>
+            <NavLink to="/activity">Activity</NavLink>
             <NavLink to="/settings">Settings</NavLink>
           </nav>
         </div>
