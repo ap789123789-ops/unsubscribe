@@ -23,7 +23,7 @@ test('reviews a real candidate list and creates an immutable confirmation plan',
   await expect(page.getByRole('button', { name: 'Confirm unsubscribe from 1 list' })).toBeEnabled()
 })
 
-test('shows an exact mailto preview before staged Gmail send consent', async ({ page }) => {
+test('shows an exact mailto preview and executes the controlled Gmail sample', async ({ page }) => {
   await page.goto('/review')
 
   await page.getByRole('checkbox', { name: 'Select Mailing Club' }).check()
@@ -33,5 +33,10 @@ test('shows an exact mailto preview before staged Gmail send consent', async ({ 
   await expect(page.getByText('leave@example.net')).toBeVisible()
   await expect(page.getByText('Remove me')).toBeVisible()
   await expect(page.getByText('Please unsubscribe this address')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Authorize Gmail sending' })).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm unsubscribe from 1 list' }).click()
+  await page.getByRole('link', { name: 'View activity' }).click()
+
+  const action = page.getByRole('listitem', { name: /Mailing Club: Request sent/i })
+  await expect(action).toContainText('Gmail accepted the unsubscribe email')
+  await expect(action).toContainText('list processing is not verified')
 })

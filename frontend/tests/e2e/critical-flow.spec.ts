@@ -11,6 +11,6 @@ test('@critical confirms a reviewed one-click action and preserves honest status
 
   const action = page.getByRole('listitem').filter({ hasText: 'Request sent' })
   await expect(action).toBeVisible()
-  await expect(action).toContainText('sender processing was not explicitly confirmed')
+  await expect(action).toContainText('list processing is not verified')
   await expect(page.getByRole('heading', { name: 'Unsubscribe confirmed' })).toHaveCount(0)
 })

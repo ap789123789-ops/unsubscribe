@@ -182,7 +182,9 @@ export function ActivityPage() {
       return
     }
     if (event.key !== 'Tab' || !dialogRef.current) return
-    const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not(:disabled)'))
+    const focusable = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>('[tabindex="-1"], button:not(:disabled)'),
+    )
     const first = focusable[0]
     const last = focusable.at(-1)
     if (event.shiftKey && document.activeElement === first) {

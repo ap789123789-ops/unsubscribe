@@ -15,6 +15,8 @@ from app.executors.browser import BrowserSessionSnapshot
 from app.executors.mailto import MailtoExecutor
 from app.executors.models import ExecutionResult
 from app.executors.rfc8058 import HttpResponse, Rfc8058Executor
+from app.gmail.oauth import OAuthCoordinator
+from app.gmail.protocols import OAuthIntent, OAuthToken
 from app.main import create_app
 from app.persistence.database import create_database_engine, create_session_factory, run_migrations
 from app.persistence.repositories import ActionRepository
@@ -128,6 +130,69 @@ def test_catalog() -> InMemoryCandidateCatalog:
             evidence_quote="<script>window.__unsubscribeXss=2</script>",
         )
     )
+    catalog.add(
+        EvaluatedMessage(
+            gmail_id="fixture-activity-rfc-1",
+            sender="Dispatch Lab <dispatch@dispatch-lab.example>",
+            subject="Agent patterns weekly",
+            sent_at=datetime(2026, 9, 7, 12, tzinfo=UTC),
+            list_id="dispatch-lab.example",
+            category=ClassificationCategory.MARKETING,
+            confidence=0.91,
+            methods=(
+                DiscoveredMethod(
+                    method=UnsubscribeMethod.RFC8058,
+                    target="https://dispatch-lab.example/leave?token=private-fixture",
+                    source="header",
+                ),
+            ),
+            reason="Recurring product newsletter",
+            evidence_quote="Agent patterns weekly",
+        )
+    )
+    catalog.add(
+        EvaluatedMessage(
+            gmail_id="fixture-activity-mailto-1",
+            sender="Member Post <news@member-post.example>",
+            subject="Member digest",
+            sent_at=datetime(2026, 9, 6, 12, tzinfo=UTC),
+            list_id="member-post.example",
+            category=ClassificationCategory.MARKETING,
+            confidence=0.9,
+            methods=(
+                DiscoveredMethod(
+                    method=UnsubscribeMethod.MAILTO,
+                    target=(
+                        "mailto:remove@member-post.example?subject=Unsubscribe"
+                        "&body=Please%20remove%20this%20address"
+                    ),
+                    source="header",
+                ),
+            ),
+            reason="Recurring membership digest",
+            evidence_quote="Member digest",
+        )
+    )
+    catalog.add(
+        EvaluatedMessage(
+            gmail_id="fixture-activity-browser-1",
+            sender="Product Circle <hello@product-circle.example>",
+            subject="Circle highlights",
+            sent_at=datetime(2026, 9, 5, 12, tzinfo=UTC),
+            list_id="product-circle.example",
+            category=ClassificationCategory.MARKETING,
+            confidence=0.86,
+            methods=(
+                DiscoveredMethod(
+                    method=UnsubscribeMethod.BROWSER,
+                    target="https://product-circle.example/preferences?token=private-fixture",
+                    source="header-or-body",
+                ),
+            ),
+            reason="Recurring community marketing roundup",
+            evidence_quote="Circle highlights",
+        )
+    )
     return catalog
 
 
@@ -150,6 +215,45 @@ class AuthorizedFixtureGmail:
 
     async def find_sent_by_message_id(self, message_id: str) -> str | None:
         return None
+
+
+class FixtureCredentials:
+    def __init__(self) -> None:
+        self.values = {
+            "google-oauth": "fixture-credentials",
+            "google-oauth-scopes": (
+                '["https://www.googleapis.com/auth/gmail.readonly", '
+                '"https://www.googleapis.com/auth/gmail.send"]'
+            ),
+        }
+
+    def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    def set(self, key: str, value: str) -> None:
+        self.values[key] = value
+
+    def delete(self, key: str) -> None:
+        self.values.pop(key, None)
+
+
+class FixtureOAuthProvider:
+    def authorization_url(self, *, state: str, code_challenge: str, intent: OAuthIntent) -> str:
+        return f"https://accounts.example.test/auth?state={state}&intent={intent.value}"
+
+    def exchange_code(
+        self, *, code: str, code_verifier: str, intent: OAuthIntent
+    ) -> OAuthToken:
+        return OAuthToken(
+            serialized_credentials="fixture-credentials",
+            scopes=(
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/gmail.send",
+            ),
+        )
+
+    def revoke(self, serialized_credentials: str) -> bool:
+        return True
 
 
 class ControlledBrowserBoundary:
@@ -223,12 +327,13 @@ browser_sessions = BrowserSessionService(
     repository=repository,
 )
 app = create_app(
-    settings=Settings(
+    settings=Settings(  # type: ignore[call-arg]
         _env_file=None,
         database_url=database_url,
         google_client_secrets_file=None,
         browser_profile_root=e2e_root / "browser-profiles",
     ),
+    oauth_coordinator=OAuthCoordinator(FixtureOAuthProvider(), FixtureCredentials()),
     candidate_catalog=catalog,
     action_plan_service=plans,
     execution_coordinator=coordinator,
