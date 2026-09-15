@@ -2,6 +2,10 @@ import { expect, test } from '@playwright/test'
 
 test('@activity runs controlled one-click, email, and browser samples through the activity center', async ({ page }, testInfo) => {
   const sample = testInfo.repeatEachIndex + 1
+  const consoleErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text())
+  })
   await page.goto('/review')
 
   await page.getByRole('checkbox', { name: `Select Dispatch Lab ${sample}` }).check()
@@ -36,4 +40,5 @@ test('@activity runs controlled one-click, email, and browser samples through th
   await expect(page.getByRole('listitem', { name: `Member Post ${sample}: Request sent` })).toBeVisible()
   await expect(page.getByRole('listitem', { name: `Product Circle ${sample}: Unsubscribe confirmed` })).toBeVisible()
   await expect(page.getByText('private-fixture')).toHaveCount(0)
+  expect(consoleErrors).toEqual([])
 })

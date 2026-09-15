@@ -211,6 +211,18 @@ class ExecutionCoordinator:
                         result = await self._rfc8058.execute(
                             Rfc8058Payload(target=validated_target)
                         )
+                        if result.state is ActionState.FAILED and result.evidence_code in {
+                            "http_429",
+                            "http_503",
+                        }:
+                            result = ExecutionResult(
+                                state=ActionState.FAILED,
+                                evidence_code=result.evidence_code,
+                                safe_detail=(
+                                    "The server rejected the one allowed retry. Nothing was "
+                                    "submitted; no further retry is available."
+                                ),
+                            )
                     except UnsafeTarget:
                         result = ExecutionResult(
                             state=ActionState.FAILED,

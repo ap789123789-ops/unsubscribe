@@ -51,6 +51,20 @@ class CountingRfc:
         )
 
 
+class RetryableFailureRfc:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def execute(self, payload):
+        self.calls += 1
+        return ExecutionResult(
+            state=ActionState.FAILED,
+            evidence_code="http_503",
+            safe_detail="The server rejected the request. A reviewed retry may be available.",
+            retryable=True,
+        )
+
+
 class AuthorizedGmail:
     async def has_send_scope(self) -> bool:
         return True
@@ -268,6 +282,55 @@ async def test_reviewed_retry_records_failed_when_encrypted_payload_is_unavailab
     assert activity is not None
     assert activity.evidence_code == "stored_payload_unavailable"
     assert rfc.calls == 0
+
+
+async def test_reviewed_rfc_retry_does_not_offer_another_retry_after_second_503(
+    tmp_path,
+) -> None:
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'rfc-second-503.sqlite3'}")
+    initialize_database(engine)
+    repository = ActionRepository(create_session_factory(engine))
+    cipher = PayloadCipher(b"r" * 32)
+    action_id = uuid4()
+    action = ActionRecord(
+        id=action_id,
+        plan_id=uuid4(),
+        candidate_id=uuid4(),
+        idempotency_key="retry-rfc-second-503",
+        method=UnsubscribeMethod.RFC8058,
+        state=ActionState.EXECUTING,
+        encrypted_payload=cipher.encrypt(
+            action_id,
+            {"version": 1, "method": "rfc8058", "target": "https://example.com/retry"},
+        ),
+    )
+    persist_action(repository, action)
+    repository.set_state(
+        action.id,
+        ActionState.FAILED,
+        evidence_code="http_503",
+        safe_detail="The server rejected the request. A reviewed retry may be available.",
+    )
+    rfc = RetryableFailureRfc()
+    coordinator = ExecutionCoordinator(
+        plans=ActionPlanService(InMemoryCandidateCatalog()),
+        repository=repository,
+        cipher=cipher,
+        rfc8058=rfc,
+        mailto=MailtoExecutor(gmail=AuthorizedGmail(), journal=repository),
+        url_policy=AcceptingPolicy(),
+    )
+
+    result = await coordinator.review_and_retry(str(action.id))
+    activity = repository.get_activity(action.id)
+
+    assert result.state is ActionState.FAILED
+    assert result.retry_count == 1
+    assert activity is not None
+    assert activity.safe_detail == (
+        "The server rejected the one allowed retry. Nothing was submitted; no further retry is "
+        "available."
+    )
 
 
 async def test_mailto_can_retry_only_when_missing_authorization_proves_no_send(tmp_path) -> None:
