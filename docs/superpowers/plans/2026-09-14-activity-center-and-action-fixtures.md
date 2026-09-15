@@ -66,9 +66,9 @@ September update    community.example      Login required    Review blocker
 - Produces `ActionRepository.list_activity(plan_id: str | None = None) -> tuple[ActivityRecord, ...]` ordered newest first.
 - Produces `ActionRepository.consume_retry(action_id) -> ActionRecord` with an atomic maximum of one.
 
-- [ ] **Step 1: Write a failing repository test** that confirms two plans are returned newest first with sender, subject, redacted target, and latest event evidence, while a plan filter returns only matching rows.
-- [ ] **Step 2: Run** `cd backend && APP_ENABLE_EXTERNAL_SERVICES=false uv run pytest tests/integration/test_persistence.py -q`; expect missing activity projection/columns.
-- [ ] **Step 3: Add migration and model fields.** New action fields are non-null with safe legacy defaults:
+- [x] **Step 1: Write a failing repository test** that confirms two plans are returned newest first with sender, subject, redacted target, and latest event evidence, while a plan filter returns only matching rows.
+- [x] **Step 2: Run** `cd backend && APP_ENABLE_EXTERNAL_SERVICES=false uv run pytest tests/integration/test_persistence.py -q`; expect missing activity projection/columns.
+- [x] **Step 3: Add migration and model fields.** New action fields are non-null with safe legacy defaults:
 
 ```python
 display_sender: Mapped[str] = mapped_column(String(500), default="Unknown sender")
@@ -76,9 +76,9 @@ display_subject: Mapped[str] = mapped_column(Text, default="(no subject)")
 target_display: Mapped[str] = mapped_column(String(500), default="Unknown destination")
 ```
 
-- [ ] **Step 4: Implement the latest-event projection** using the greatest `action_events.stream_sequence` per action; never decrypt payloads for list reads.
-- [ ] **Step 5: Run the focused test** and confirm it passes.
-- [ ] **Step 6: Commit** the durable projection.
+- [x] **Step 4: Implement the latest-event projection** using the greatest `action_events.stream_sequence` per action; never decrypt payloads for list reads.
+- [x] **Step 5: Run the focused test** and confirm it passes.
+- [x] **Step 6: Commit** the durable projection.
 
 ### Task 2: Activity API and policy-limited repair
 
@@ -89,10 +89,10 @@ target_display: Mapped[str] = mapped_column(String(500), default="Unknown destin
 - Produces `POST /api/actions/{action_id}/retry` with CSRF/Origin protection.
 - Produces `ExecutionCoordinator.review_and_retry(action_id: str) -> ActionRecord`.
 
-- [ ] **Step 1: Write a failing API test** for a global activity item containing `id`, `plan_id`, `sender`, `subject`, `target_display`, `method`, `state`, `evidence_code`, `safe_detail`, `updated_at`, and `browser_session_id`.
-- [ ] **Step 2: Run** `cd backend && APP_ENABLE_EXTERNAL_SERVICES=false uv run pytest tests/api/test_activity.py -q`; expect a 404.
-- [ ] **Step 3: Implement the read endpoint** with `limit` constrained to 1–500 and optional plan filtering.
-- [ ] **Step 4: Write failing coordinator tests** for these independent known outcomes:
+- [x] **Step 1: Write a failing API test** for a global activity item containing `id`, `plan_id`, `sender`, `subject`, `target_display`, `method`, `state`, `evidence_code`, `safe_detail`, `updated_at`, and `browser_session_id`.
+- [x] **Step 2: Run** `cd backend && APP_ENABLE_EXTERNAL_SERVICES=false uv run pytest tests/api/test_activity.py -q`; expect a 404.
+- [x] **Step 3: Implement the read endpoint** with `limit` constrained to 1–500 and optional plan filtering.
+- [x] **Step 4: Write failing coordinator tests** for these independent known outcomes:
 
 ```text
 failed + http_429/http_503 + retry_count 0 -> one reviewed RFC retry
@@ -100,10 +100,10 @@ needs_user + gmail_send_authorization_required + retry_count 0 -> one mailto ret
 submitted/confirmed/uncertain-mail/final-click-issued/second retry -> reject without side effect
 ```
 
-- [ ] **Step 5: Implement retry eligibility.** The endpoint is itself the renewed user confirmation. It consumes the retry allowance before the outbound call, revalidates an RFC target, reconstructs only the exact encrypted mail draft, and records every state transition.
-- [ ] **Step 6: Run focused API/coordinator tests** and confirm both pass.
-- [ ] **Step 7: Regenerate OpenAPI and TypeScript** with `make openapi`.
-- [ ] **Step 8: Commit** the API and repair policy.
+- [x] **Step 5: Implement retry eligibility.** The endpoint is itself the renewed user confirmation. It consumes the retry allowance before the outbound call, revalidates an RFC target, reconstructs only the exact encrypted mail draft, and records every state transition.
+- [x] **Step 6: Run focused API/coordinator tests** and confirm both pass.
+- [x] **Step 7: Regenerate OpenAPI and TypeScript** with `make openapi`.
+- [x] **Step 8: Commit** the API and repair policy.
 
 ### Task 3: Global Activity Center
 
@@ -113,14 +113,14 @@ submitted/confirmed/uncertain-mail/final-click-issued/second retry -> reject wit
 - Consumes generated `ActivityActionResponse` and `ActivityActionListResponse`.
 - Keeps `/activity/:planId` as a filtered compatibility route and adds `/activity` globally.
 
-- [ ] **Step 1: Write a failing component test** with RFC submitted, browser needs-user, mailto authorization-required, and failed non-retryable rows. Assert identity/evidence, filters, and that only eligible rows expose a repair action.
-- [ ] **Step 2: Run** `cd frontend && npm test -- --run tests/components/activity.test.tsx`; expect the global ledger behavior to be absent.
-- [ ] **Step 3: Implement API client functions** `listActions(planId?)` and `retryAction(actionId)`.
-- [ ] **Step 4: Implement the ledger** with semantic filter buttons, an accessible list, safe exact evidence, localized timestamps, empty/error states, and browser intervention dialog.
-- [ ] **Step 5: Implement repair UX:** browser blocker controls; Gmail authorization followed by explicit email retry; and a confirmation dialog before one eligible RFC retry. No control is rendered for submitted, confirmed, or uncertain actions.
-- [ ] **Step 6: Add the Activity nav item and responsive styles.** On narrow screens each ledger row becomes a two-column label/value stack without changing reading order.
-- [ ] **Step 7: Run component tests, ESLint, and TypeScript** and confirm all pass.
-- [ ] **Step 8: Commit** the Activity Center.
+- [x] **Step 1: Write a failing component test** with RFC submitted, browser needs-user, mailto authorization-required, and failed retry-eligible rows. Assert identity/evidence, filters, and that only eligible rows expose a repair action.
+- [x] **Step 2: Run** `cd frontend && npm test -- --run tests/components/activity.test.tsx`; expect the global ledger behavior to be absent.
+- [x] **Step 3: Implement API client functions** `listActions(planId?)` and `retryAction(actionId)`.
+- [x] **Step 4: Implement the ledger** with semantic filter buttons, an accessible list, safe exact evidence, localized timestamps, empty/error states, and browser intervention dialog.
+- [x] **Step 5: Implement repair UX:** browser blocker controls; Gmail authorization followed by explicit email retry; and a confirmation dialog before one eligible RFC retry. No control is rendered for submitted, confirmed, or uncertain actions.
+- [x] **Step 6: Add the Activity nav item and responsive styles.** On narrow screens each ledger row becomes a two-column label/value stack without changing reading order.
+- [x] **Step 7: Run component tests, ESLint, and TypeScript** and confirm all pass.
+- [x] **Step 8: Commit** the Activity Center.
 
 ### Task 4: Controlled sample-email action flows
 
@@ -128,25 +128,25 @@ submitted/confirmed/uncertain-mail/final-click-issued/second retry -> reject wit
 
 **Interfaces:** Browser-visible review → confirmation → execution → global activity, with deterministic fake Gmail and sender boundaries.
 
-- [ ] **Step 1: Add connected read/send OAuth fixture state** so the browser can execute, not merely preview, the `mailto:` sample without contacting Google.
-- [ ] **Step 2: Add three uniquely named sample candidates** representing RFC accepted, mailto accepted, and browser login-required results.
-- [ ] **Step 3: Write one failing Playwright journey** that selects all three samples, confirms the exact destinations, executes once, opens global Activity, and observes submitted/submitted/needs-user outcomes attached to the correct senders.
-- [ ] **Step 4: Exercise browser repair** through Review blocker → Take over → Resume and verify only that row becomes confirmed.
-- [ ] **Step 5: Assert safety:** no signed token appears, submitted rows never say confirmed, and no unexpected page or console error occurs.
-- [ ] **Step 6: Run** `APP_ENABLE_EXTERNAL_SERVICES=false npm --prefix frontend run test:e2e -- --reporter=list`; diagnose and fix product failures rather than weakening locators.
-- [ ] **Step 7: Repeat the critical new test five times** using `--grep @activity --repeat-each=5`.
-- [ ] **Step 8: Commit** the controlled action fixtures and E2E coverage.
+- [x] **Step 1: Add connected read/send OAuth fixture state** so the browser can execute, not merely preview, the `mailto:` sample without contacting Google.
+- [x] **Step 2: Add three uniquely named sample candidates** representing RFC accepted, mailto accepted, and browser login-required results.
+- [x] **Step 3: Write one failing Playwright journey** that selects all three samples, confirms the exact destinations, executes once, opens global Activity, and observes submitted/submitted/needs-user outcomes attached to the correct senders.
+- [x] **Step 4: Exercise browser repair** through Review blocker → Take over → Resume and verify only that row becomes confirmed.
+- [x] **Step 5: Assert safety:** no signed token appears, submitted rows never say confirmed, and no unexpected page or console error occurs.
+- [x] **Step 6: Run** `APP_ENABLE_EXTERNAL_SERVICES=false npm --prefix frontend run test:e2e -- --reporter=list`; diagnose and fix product failures rather than weakening locators.
+- [x] **Step 7: Repeat the critical new test five times** using `--grep @activity --repeat-each=5`.
+- [x] **Step 8: Commit** the controlled action fixtures and E2E coverage.
 
 ### Task 5: Documentation, review, and release gate
 
 **Files:** `README.md`, `agent.md`, `docs/06-detailed-technical-design.md`, `docs/07-frontend-experience-spec.md`
 
-- [ ] **Step 1: Document** global history, exact statuses, repair eligibility, and the controlled fixture boundary.
-- [ ] **Step 2: Verify `agent.md` remains under 200 lines.**
-- [ ] **Step 3: Request an independent differential review** against this plan; fix every Critical and Important finding.
-- [ ] **Step 4: Run `make verify` fresh** and require exit code 0.
-- [ ] **Step 5: Inspect the staged diff** and exclude `frontend/package-lock.json`, `env`, credentials, SQLite files, `.local`, and browser profiles.
-- [ ] **Step 6: Commit and push `main`**, then restart the local backend and verify `/api/health` returns 200.
+- [x] **Step 1: Document** global history, exact statuses, repair eligibility, and the controlled fixture boundary.
+- [x] **Step 2: Verify `agent.md` remains under 200 lines.**
+- [x] **Step 3: Request an independent differential review** against this plan; fix every Critical and Important finding.
+- [x] **Step 4: Run `make verify` fresh** and require exit code 0.
+- [x] **Step 5: Inspect the staged diff** and exclude `frontend/package-lock.json`, `env`, credentials, SQLite files, `.local`, and browser profiles.
+- [x] **Step 6: Commit and push `main`**, then restart the local backend and verify `/api/health` returns 200.
 
 ## Self-review
 
