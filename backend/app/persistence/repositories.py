@@ -26,6 +26,13 @@ class ActionEventRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class ActivityRecord:
+    action: ActionRecord
+    evidence_code: str | None
+    safe_detail: str | None
+
+
 class ActionRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -41,6 +48,9 @@ class ActionRepository:
                     method=action.method.value,
                     state=action.state.value,
                     encrypted_payload=action.encrypted_payload,
+                    display_sender=action.display_sender,
+                    display_subject=action.display_subject,
+                    target_display=action.target_display,
                     retry_count=action.retry_count,
                     outbound_message_id=action.outbound_message_id,
                     external_id=action.external_id,
@@ -106,6 +116,39 @@ class ActionRepository:
                 .order_by(UnsubscribeActionORM.created_at, UnsubscribeActionORM.id)
             )
             return tuple(self._from_row(row) for row in rows)
+
+    def list_activity(
+        self,
+        *,
+        plan_id: str | None = None,
+        limit: int = 500,
+    ) -> tuple[ActivityRecord, ...]:
+        with self._session_factory() as session:
+            statement = select(UnsubscribeActionORM)
+            if plan_id is not None:
+                statement = statement.where(UnsubscribeActionORM.plan_id == plan_id)
+            rows = session.scalars(
+                statement.order_by(
+                    UnsubscribeActionORM.updated_at.desc(),
+                    UnsubscribeActionORM.id.desc(),
+                ).limit(limit)
+            )
+            activity: list[ActivityRecord] = []
+            for row in rows:
+                latest_event = session.scalar(
+                    select(ActionEventORM)
+                    .where(ActionEventORM.action_id == row.id)
+                    .order_by(ActionEventORM.stream_sequence.desc())
+                    .limit(1)
+                )
+                activity.append(
+                    ActivityRecord(
+                        action=self._from_row(row),
+                        evidence_code=(latest_event.evidence_code if latest_event else None),
+                        safe_detail=(latest_event.safe_detail if latest_event else None),
+                    )
+                )
+            return tuple(activity)
 
     def list_events(
         self,
@@ -227,6 +270,9 @@ class ActionRepository:
             method=action.method.value,
             state=action.state.value,
             encrypted_payload=action.encrypted_payload,
+            display_sender=action.display_sender,
+            display_subject=action.display_subject,
+            target_display=action.target_display,
             retry_count=action.retry_count,
             outbound_message_id=action.outbound_message_id,
             external_id=action.external_id,
@@ -244,6 +290,9 @@ class ActionRepository:
             method=UnsubscribeMethod(row.method),
             state=ActionState(row.state),
             encrypted_payload=row.encrypted_payload,
+            display_sender=row.display_sender,
+            display_subject=row.display_subject,
+            target_display=row.target_display,
             retry_count=row.retry_count,
             outbound_message_id=row.outbound_message_id,
             external_id=row.external_id,

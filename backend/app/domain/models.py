@@ -30,6 +30,9 @@ class ActionRecord(BaseModel):
     method: UnsubscribeMethod
     state: ActionState
     encrypted_payload: bytes
+    display_sender: str = "Unknown sender"
+    display_subject: str = "(no subject)"
+    target_display: str = "Unknown destination"
     retry_count: int = Field(default=0, ge=0)
     outbound_message_id: str | None = None
     external_id: str | None = None
