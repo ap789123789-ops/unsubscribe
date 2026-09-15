@@ -300,7 +300,7 @@ erDiagram
 | `subscription_candidates` | Versioned grouping key, display identity, aggregate category, method, redacted target and counts. |
 | `candidate_messages` | Many-to-many membership and representative-message flag. |
 | `action_plans` | Immutable candidate revisions, digest, warnings, confirmation timestamp/status. |
-| `unsubscribe_actions` | Unique idempotency key, executor, state, timestamps, retry count, deterministic outbound `Message-ID`, external Gmail ID, OS-keyring-key-encrypted method payload, redacted result. |
+| `unsubscribe_actions` | Unique idempotency key, executor, state, timestamps, retry count, deterministic outbound `Message-ID`, external Gmail ID, immutable sender/subject/redacted destination, and OS-keyring-key-encrypted method payload. |
 | `action_events` | Append-only transitions and safe diagnostics; no secrets, bodies, cookies, or full signed URLs. |
 
 On-demand message preview re-fetches the Gmail message and sanitizes it; it does not cache the full body. A later settings decision will define automatic metadata/history deletion. “Delete local data” removes database rows, browser profiles, and credential-store entries after explicit confirmation.
@@ -402,6 +402,8 @@ All routes are loopback-only, same-origin, JSON unless noted, and validated with
 | `POST /api/action-plans` | Validate selected candidate revisions and create immutable plan | Candidate IDs/revisions -> exact plan and digest. |
 | `POST /api/action-plans/:id/confirm` | Confirm matching digest and start execution | Returns action IDs; rejects stale/mismatched plan. |
 | `GET /api/action-plans/:id/actions` | Load current action states | Redacted method/state/session references. |
+| `GET /api/actions?plan_id=<optional>&limit=<1..500>` | Load global or plan-scoped durable activity | Sender, subject, redacted destination, state, latest safe evidence, retry eligibility, and browser-session reference. Never decrypts the stored target. |
+| `POST /api/actions/:id/retry` | Execute one explicitly reviewed, policy-eligible repair | CSRF-protected; only RFC 429/503 or `mailto:` blocked before send by missing Gmail authorization; consumes the one-retry allowance before the call. |
 | `GET /events/actions/:plan_id` | Stream durable action states | SSE replay using `Last-Event-ID`; reconnect supported. |
 | `GET /api/browser-sessions/:id` | Read a redacted blocker snapshot | Origin and safety counters, never a signed URL. |
 | `POST /api/browser-sessions/:id/take-over` | Bring the guarded headed window forward | Network policy stays installed. |
@@ -434,7 +436,7 @@ class UnsubscribeExecutor(Protocol):
 
 class ExecutionCoordinator(Protocol):
     async def confirm_and_execute(self, plan_id: UUID, digest: str) -> None: ...
-    async def retry(self, action_id: UUID) -> UnsubscribeAction: ...
+    async def review_and_retry(self, action_id: UUID) -> UnsubscribeAction: ...
 ```
 
 Pydantic discriminated unions should make invalid combinations unrepresentable—for example, a `ConfirmedAction` includes confirmation timestamp/digest and a method-specific validated payload; a pending plan does not. The generated TypeScript client mirrors API DTOs, while backend domain classes remain private to Python.
@@ -444,10 +446,10 @@ Pydantic discriminated unions should make invalid combinations unrepresentable�
 | Executor | Submission | Confirmation evidence | Retry policy |
 |---|---|---|---|
 | RFC 8058 | HTTPS POST body exactly `List-Unsubscribe=One-Click`; no cookies/auth; no redirects | V1 records a successfully issued request as **submitted**; the standard does not provide reliable completion semantics | Never retry if request may have left. One reviewed retry only for definitive pre-send failure or explicit 429/503 with bounded `Retry-After`. |
-| `mailto:` | RFC-compliant Gmail message from exact preview; requires incremental `gmail.send`; includes deterministic opaque RFC `Message-ID` | Gmail API ID or Sent-mail lookup by `rfc822msgid:` proves sent/submitted, not sender processing | Never resend automatically. Reconcile by deterministic message ID after uncertainty. |
+| `mailto:` | RFC-compliant Gmail message from exact preview; requires incremental `gmail.send`; includes deterministic opaque RFC `Message-ID` | Gmail API ID or Sent-mail lookup by `rfc822msgid:` proves sent/submitted, not sender processing | Never resend automatically. Reconcile by deterministic message ID after uncertainty. One reviewed attempt is allowed only when missing authorization proves the first send never started. |
 | Browser | Isolated headed page; max two pre-submit navigations; one final click | Explicit page text/state tied to unsubscribe acceptance | Final click never auto-repeats. Pause unknown outcomes; at most one reviewed retry in same action session. |
 
-Gmail reads retry at most three times with jittered exponential backoff. Model calls get one retry for a transient transport/schema failure. Retry budgets are stored in durable state, not process memory.
+Gmail reads retry at most three times with jittered exponential backoff. Model calls get one retry for a transient transport/schema failure. Action retry budgets are stored in SQLite, consumed before the outbound call, and exposed only when the latest evidence code is allowlisted. An uncertain, submitted, or confirmed action never receives a retry control.
 
 For browser V1, **confirmed** requires visible main-content text matching a versioned English allowlist such as “you have been unsubscribed” or “email preferences updated,” after negation/error patterns such as “could not,” “expired,” or “not unsubscribed” are excluded. Store the matched redacted phrase and rule version. Non-English or unmatched pages remain **submitted** when a final click was credibly issued, or **needs_user** when submission itself is uncertain. RFC and `mailto:` never auto-upgrade beyond **submitted** in V1.
 
@@ -464,8 +466,10 @@ For browser V1, **confirmed** requires visible main-content text matching a vers
 
 ## 13. Observability and recovery
 
-V1 does not emit provider payloads or email content to application logs. The local activity view is
-sourced from append-only `action_events`, not transient process output. OpenAI traces are disabled
+V1 does not emit provider payloads or email content to application logs. The global `/api/actions`
+activity projection joins immutable safe display metadata to the latest append-only `action_events`
+entry; it never decrypts an action target. The local activity view is therefore durable across runs,
+not transient process output. OpenAI traces are disabled
 for email-payload privacy. Rotating project-local logs record a scan ID, safe error code, exception
 type, and stack locations without provider-controlled exception text; the active log and all backups
 remain owner-only (`0600`) across rollover. FastAPI returns distinct safe codes for Gmail access and
@@ -493,7 +497,7 @@ codes/details, and opaque IDs.
 - **Frontend component:** Vitest/Testing Library covers accordion ARIA state, hidden selections, confirmation copy, empty/error/loading states, focus restoration, and responsive behavior.
 - **UI/E2E:** Playwright drives the real React build against real FastAPI while external
   Google/OpenAI/sender boundaries are faked. It covers review/confirmation, exact mail preview,
-  honest result copy, browser takeover/resume, hostile rendered text, Host/CSRF controls, keyboard
+  global activity, controlled RFC/mailto/browser outcomes, browser takeover/resume, hostile rendered text, Host/CSRF controls, keyboard
   focus, reduced motion/forced colors, and axe checks. SQLite migration/recovery, OAuth errors,
   executors, and hostile network fixtures are covered at the API/integration layer.
 - **Real smoke tests:** safe opt-in Gmail/OpenAI read/classification proves the expected account,

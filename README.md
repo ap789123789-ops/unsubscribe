@@ -54,7 +54,14 @@ make dev-backend
 ```
 
 Open `http://127.0.0.1:8000`. Connect Gmail, run a bounded scan, review the collapsible categories,
-inspect/correct classifications, select subscriptions, and confirm the exact action plan.
+inspect/correct classifications, select subscriptions, and confirm the exact action plan. The
+**Activity** navigation item opens durable history across every run; each row shows its sender,
+subject, redacted destination, latest evidence, and honest status.
+
+Activity offers a repair control only when the recorded evidence makes another attempt safe. V1
+allows one user-reviewed RFC retry after an explicit HTTP 429/503, a reviewed `mailto:` send after
+Gmail authorization was missing before sending, and resume/stop controls for the same guarded
+browser session. Submitted, confirmed, and uncertain-send outcomes cannot be retried.
 
 For split frontend development, run `make dev-backend` and `make dev-frontend` in separate terminals.
 
@@ -92,6 +99,9 @@ and the full React–FastAPI Playwright suite with axe security/accessibility as
 CI never receives Gmail or OpenAI secrets. It fakes only external providers and sender sites.
 The `test`, `verify`, and OpenAPI-generation commands also force external services off locally, so
 a developer's real `.env` and Keychain credentials cannot leak into automated tests.
+The Playwright suite includes synthetic email candidates for RFC 8058, `mailto:`, and browser
+actions. Those tests execute real React/FastAPI/SQLite code while replacing Google and sender-owned
+network boundaries; they do not unsubscribe a real address.
 
 ## Safe credentialed read/classification smoke
 

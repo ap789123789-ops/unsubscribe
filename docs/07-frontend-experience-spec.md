@@ -53,6 +53,7 @@ Below 800px, the evidence drawer becomes a full-width dialog and the selection s
 | `/scan` | Choose bounds and observe ingestion/classification progress | **Scan email** |
 | `/review` | Understand, correct, and select candidates | **Review N actions** |
 | `/confirm/:planId` | Verify immutable targets, methods, scopes, and warnings | **Unsubscribe from N lists** |
+| `/activity` | Review durable history across all runs and resolve safe repairs | State-specific action only |
 | `/activity/:planId` | Follow results and resolve intervention | Context-specific action only |
 | `/settings` | Disconnect, revoke, set retention, delete local data | Explicit destructive labels |
 
@@ -91,6 +92,12 @@ The action name stays stable: “Unsubscribe from N lists” on confirmation lea
 
 ### Activity and intervention
 
+Activity is a chronological dispatch ledger, not a summary-card dashboard. A compact filter strip
+offers All actions, Needs attention, Working, Request sent, and Confirmed with visible counts. Every
+row contains sender/list name, representative subject, method, redacted destination, localized
+timestamp, user-facing status, and the latest safe evidence. `/activity/:planId` shows the same
+ledger filtered to one run; `/activity` is available in primary navigation and spans all runs.
+
 | State | User-facing label | Explanation/action |
 |---|---|---|
 | `executing` | Working | “Opening the unsubscribe page” or method-specific progress. |
@@ -100,6 +107,12 @@ The action name stays stable: “Unsubscribe from N lists” on confirmation lea
 | `failed` | Not submitted | Give a concrete reason and show **Review retry** only if policy permits. |
 
 Never use a green success treatment for `submitted`. Status announcements use a polite live region; a batch summary does not steal focus repeatedly. When an intervention dialog opens, focus moves to its heading; closing returns focus to the originating activity row.
+
+Repair controls are evidence-specific. An RFC row exposes **Review one-click retry** only after an
+explicit 429/503 and allows one renewed confirmation. A `mailto:` row exposes **Reconnect Gmail**
+only when missing authorization proves no send started; after authorization, **Review email send**
+requires another explicit click. A browser row resumes or stops the same guarded session. No retry
+is offered for submitted, confirmed, mail-send-uncertain, or final-click-uncertain outcomes.
 
 ## Empty and failure copy
 
@@ -113,8 +126,11 @@ Errors state what happened and the next safe action. They do not apologize, cele
 
 ## Frontend acceptance checks
 
-- Component tests cover every category accordion, selected-count state, evidence drawer, confirmation method, result status, empty/error state, and narrow layout.
+- Component tests cover every category accordion, selected-count state, evidence drawer, confirmation method, global activity filter, eligible repair control, result status, empty/error state, and narrow layout.
 - Keyboard-only flow covers scan → review → selection → confirmation → results; Escape and focus restoration are deterministic.
 - Axe checks cover setup, review with each category state, confirmation, and intervention; manual VoiceOver/NVDA checks are required before V1.
 - Forced-colors and reduced-motion modes retain category/status meaning.
 - Hostile email strings render only as text; no active HTML, `javascript:` URL, remote image, or inline event executes.
+- A controlled browser journey selects synthetic RFC, `mailto:`, and browser candidates together,
+  checks submitted/submitted/needs-user evidence, completes the browser intervention, and confirms
+  global history without contacting Google or a sender website.

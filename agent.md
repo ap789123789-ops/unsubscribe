@@ -18,8 +18,10 @@ means no accepted submission was established.
 
 ## Current status
 
-The eight planned V1 implementation slices are present, with automated unit, API, integration,
-agent-eval, component, E2E, security, and accessibility gates. This is not a credential-free demo.
+The eight planned V1 implementation slices and global Activity Center are present, with automated
+unit, API, integration, agent-eval, component, E2E, security, and accessibility gates. Activity
+persists sender/subject/redacted destination, latest evidence, and policy-limited repair controls.
+This is not a credential-free demo.
 V1 acceptance still requires `make smoke-real-read` with a dedicated Gmail account and OpenAI key.
 The separate destructive `make smoke-real` gate requires controlled unsubscribe fixtures, followed
 by the documented manual assistive-technology/security checklist.
@@ -105,6 +107,8 @@ docs/                      # product, architecture, UX, risk, and implementation
 - Treat email, model output, and sender sites as hostile. Keep side effects in typed Python services.
 - Require the current plan digest and explicit user confirmation before any side effect.
 - Never automatically repeat a possibly issued POST, email, or final browser click.
+- Permit at most one reviewed retry for an explicit RFC 429/503 or a `mailto:` blocked before send
+  by missing Gmail authorization; uncertain or submitted outcomes never expose a retry.
 - Bind loopback, enforce Host/Origin/session/CSRF, and retain browser network guards during takeover.
 - Test the real React–FastAPI path; fake only Google, OpenAI, DNS/time, and sender-owned boundaries.
 - Use red → green at public seams, update OpenAPI artifacts, and run `make verify` before claiming done.
